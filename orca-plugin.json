@@ -10,6 +10,24 @@
   },
   "repository": "https://github.com/maximechbt/beads-orca-ui",
   "license": "MIT",
+  "icon": "docs/icon.png",
+  "screenshots": [
+    {
+      "path": "docs/screenshots/ready.png",
+      "caption": "The task in progress, then what is ready, by epic or all at once.",
+      "alt": "Three Beads panels: the Ready tab, the Epics tab with progress bars, and the All tab."
+    },
+    {
+      "path": "docs/screenshots/task.png",
+      "caption": "Everything about a task, in light and dark. Finish it with a reason.",
+      "alt": "A task opened in the Beads panel, in light and dark, and the finish form asking for a reason."
+    },
+    {
+      "path": "docs/screenshots/act.png",
+      "caption": "Launch an agent, create a task, without leaving Orca.",
+      "alt": "The launch form with agent, worktree and prompt; the new task form; the Ready tab in dark."
+    }
+  ],
   "engines": {
     "orca": ">=1.4.248"
   },
