@@ -58,6 +58,8 @@ bd close "$mockups" --reason "Approved by design" >/dev/null
 bd close "$guide" --reason "Published" >/dev/null
 bd update "$checkout" --status in_progress --assignee "Ada Lovelace" >/dev/null
 bd update "$form" --status in_progress --assignee "Ada Lovelace" >/dev/null
+# An agent on a second task, so the panel shows more than one task in progress.
+bd update "$footer" --status in_progress --assignee "Claude" >/dev/null
 
 bd comments add "$form" "Hosted fields keep us out of PCI scope, so no card data touches our servers." --actor "Ada Lovelace" >/dev/null
 bd comments add "$form" "Make sure **Apple Pay** still shows on Safari." --actor "Grace Hopper" >/dev/null

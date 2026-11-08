@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "beads-orca-ui",
   "name": "Beads",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "See and act on the beads tasks of your Orca workspace: the current task, ready work, epics, comments, and launching an agent on a task.",
   "author": {
     "name": "maximechbt",
@@ -14,18 +14,18 @@
   "screenshots": [
     {
       "path": "docs/screenshots/ready.png",
-      "caption": "The task in progress, then what is ready, by epic or all at once.",
-      "alt": "Three Beads panels: the Ready tab, the Epics tab with progress bars, and the All tab."
+      "caption": "The tasks in progress on top, then all tasks by state, what is ready, and each epic's progress.",
+      "alt": "Three Beads panels: the All tab by state, the Ready tab, and the Epics tab with progress bars."
     },
     {
       "path": "docs/screenshots/task.png",
-      "caption": "Everything about a task, in light and dark. Finish it with a reason.",
-      "alt": "A task opened in the Beads panel, in light and dark, and the finish form asking for a reason."
+      "caption": "A task: description first, the rest one press away. Finish it with a reason.",
+      "alt": "A task opened in the Beads panel, then with its criteria and comments unfolded, and the finish form asking for a reason."
     },
     {
       "path": "docs/screenshots/act.png",
-      "caption": "Launch an agent, create a task, without leaving Orca.",
-      "alt": "The launch form with agent, worktree and prompt; the new task form; the Ready tab in dark."
+      "caption": "Start hands a task to an agent. Create a task without leaving Orca.",
+      "alt": "The launch form with agent, worktree and prompt; the new task form; the All tab in dark."
     }
   ],
   "engines": {

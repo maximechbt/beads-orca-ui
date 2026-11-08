@@ -16,16 +16,16 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 ![Ready, Epics and All tabs](docs/screenshots/ready.png)
 
-- **Current task**: the task in progress you touched last. An epic is never the current task.
+- **In progress**, on top: every task someone is on, you or an agent, newest first. Epics are containers, never listed there.
+- **All**, the default tab: Blocked, To do (open), In progress, Done. Each row shows its type (bug, feature, chore, epic, task); a blocked task names the task it waits on.
 - **Ready**: what `bd ready` lists, the open tasks with nothing blocking them.
 - **Epics**: each epic with a progress bar and its tasks, subtasks included, then the tasks with no epic.
-- **All**: in progress, to do, done. A waiting task names the task it waits on.
 
 ## A task in full
 
 ![A task's details, in light and dark, and finishing it](docs/screenshots/task.png)
 
-Press a task to see its description, acceptance criteria, design and notes, its parent, blockers and subtasks, and its comments. Long text starts folded. Linked tasks open on a press.
+Press a task to see its description. Its acceptance criteria, design, notes, parent, blockers, subtasks, comments and properties sit in folded sections, one press away. Linked tasks open on a press; the × beside the title goes back.
 
 From there you can start a task, which hands it to an agent, finish it with an optional reason, or reopen it. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
 
@@ -45,7 +45,7 @@ Install **Beads** from Orca's plugin catalog. Orca asks you to approve the acces
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v0.1.0
+https://github.com/maximechbt/beads-orca-ui#v0.2.0
 ```
 
 You need:
