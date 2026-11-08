@@ -103,6 +103,31 @@ export async function argsFor(cwd: string, a: BeadAction): Promise<string[] | st
     case 'comment':
       // After `--`, a comment that starts with "-" stays text.
       return a.text?.trim() ? ['comments', 'add', ...id, a.text.trim()] : 'The comment is empty.'
+    case 'edit': {
+      const f = a.fields ?? {}
+      if (f.title !== undefined && !f.title.trim()) return 'The title is empty.'
+      if (f.type !== undefined && !TYPES.includes(f.type)) return 'Invalid type.'
+      const texts = ['description', 'acceptance', 'design', 'notes'] as const
+      if (texts.some((k) => f[k] !== undefined && (typeof f[k] !== 'string' || f[k]!.length > 20_000)))
+        return 'A text field is invalid.'
+      const flags = [
+        ...(f.title !== undefined ? [`--title=${f.title.trim()}`] : []),
+        ...(f.type !== undefined ? [`--type=${f.type}`] : []),
+        ...texts.filter((k) => f[k] !== undefined).map((k) => `--${k}=${f[k]!.trim()}`)
+      ]
+      return flags.length ? ['update', ...flags, ...id] : 'Nothing to change.'
+    }
+    case 'block':
+    case 'unblock':
+      if (!a.other || a.other === a.id) return 'Pick another task.'
+      return ['dep', a.action === 'block' ? 'add' : 'remove', '--', a.id, a.other]
+    case 'release':
+      // The person takes the task back from whoever holds it, a crashed agent included.
+      return ['unclaim', '--force', ...id]
+    case 'duplicate':
+    case 'supersede':
+      if (!a.other || a.other === a.id) return 'Pick another task.'
+      return [a.action, `--${a.action === 'duplicate' ? 'of' : 'with'}=${a.other}`, ...id]
     default:
       return 'Unknown action.'
   }
@@ -151,14 +176,18 @@ export default function activate(orca: OrcaWorkerApi): void {
     }
   })
 
-  orca.panels.handle('beads.create', async ({ title, type, priority, parent }) => {
+  orca.panels.handle('beads.create', async ({ title, type, priority, parent, description }) => {
     if (!title.trim()) return invalid('The title is empty.')
     if (!TYPES.includes(type) || !isPriority(priority)) return invalid('Invalid type or priority.')
+    if (description !== undefined && (typeof description !== 'string' || description.length > 20_000))
+      return invalid('Invalid description.')
     const { ws } = await focused(orca)
     if (!ws) return noWorkspace
     try {
       const args = ['create', `--title=${title.trim()}`, `--type=${type}`, `--priority=${priority}`]
-      const created = await bd<{ id: string }>(ws.path, parent ? [...args, `--parent=${parent}`] : args)
+      if (parent) args.push(`--parent=${parent}`)
+      if (description?.trim()) args.push(`--description=${description.trim()}`)
+      const created = await bd<{ id: string }>(ws.path, args)
       return { ok: true, id: created.id }
     } catch (err) {
       return { ok: false, ...problemOf(err) }

@@ -19,6 +19,7 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 ![Ready, Epics and All tabs](docs/screenshots/ready.png)
 
 - **In progress**, on top: every task someone is on, you or an agent, newest first. Epics are containers, never listed there.
+- **Search** above the tabs finds a task by title or id; Enter on no match creates it.
 - **All**, the default tab: Blocked, To do (open), In progress, Done. Each row shows its type (bug, feature, chore, epic, task); a blocked task names the task it waits on.
 - **Ready**: what `bd ready` lists, the open tasks with nothing blocking them.
 - **Epics**: each epic with a progress bar and its tasks, subtasks included, then the tasks with no epic.
@@ -29,14 +30,15 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 Press a task to see its description. Its acceptance criteria, design, notes, parent, blockers, subtasks, comments and properties sit in folded sections, one press away. Linked tasks open on a press; the × beside the title goes back.
 
-From there you can start a task, which hands it to an agent, finish it with an optional reason, or reopen it. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
+From there you can start a task, which hands it to an agent, or finish it: done (with an optional reason), a duplicate of another task, or replaced by another. You can reopen a closed task, release a task an agent holds (a crashed agent's included), and edit a task's title, type, description, criteria, design and notes with the pencil beside its title. In **Blocked by**, the × beside a blocker removes it and **Add a blocker…** adds one. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
 
 ## Act without leaving Orca
 
 ![Launching an agent, creating a task, and the ready list in dark](docs/screenshots/act.png)
 
 - **Start** a task to launch an agent on it. Orca's default agent comes preselected, and you can pick any other installed, enabled agent. Run it in this worktree, in another worktree of the repository, or in a new one. The prompt (`Start task <id>`) can be edited first.
-- **+** creates a task, an epic, or a subtask.
+- **+** creates a task, an epic, or a subtask, with an optional description and epic. **Create and start** hands the new task to an agent right away.
+- Once an agent is launched on a task, the task says so until the agent claims it, and Start becomes **Start again**, so a second agent is never launched by accident.
 
 The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and on refresh. It speaks English and French, following Orca's language.
 
@@ -47,7 +49,7 @@ Install **Beads Panel** from Orca's plugin catalog ([open it in Orca](https://on
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v0.2.3
+https://github.com/maximechbt/beads-orca-ui#v0.3.0
 ```
 
 You need:

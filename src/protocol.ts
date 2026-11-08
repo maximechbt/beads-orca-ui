@@ -56,11 +56,28 @@ declare global {
   /** One change to one bead, run as a bd command by the worker. */
   type BeadAction = {
     id: string
-    action: 'claim' | 'close' | 'reopen' | 'priority' | 'assign-me' | 'unassign' | 'comment'
+    action:
+      | 'claim'
+      | 'close'
+      | 'reopen'
+      | 'priority'
+      | 'assign-me'
+      | 'unassign'
+      | 'comment'
+      | 'edit'
+      | 'block'
+      | 'unblock'
+      | 'release'
+      | 'duplicate'
+      | 'supersede'
     reason?: string
     /** The comment to add, in markdown. */
     text?: string
     priority?: number
+    /** The other bead: the blocker to add or remove, the canonical one, the replacement. */
+    other?: string
+    /** For `edit`: the fields to write; an empty string clears a text field. */
+    fields?: { title?: string; type?: string; description?: string; acceptance?: string; design?: string; notes?: string }
   }
 
   /** What a write answers: ok, or why not. */
@@ -79,7 +96,7 @@ declare module 'orca' {
     /** Claim, close, reopen, reprioritize or (un)assign a bead. */
     'beads.act': { input: BeadAction; output: ActResult }
     /** A new bead, optionally the child of `parent`. */
-    'beads.create': { input: { title: string; type: string; priority: number; parent?: string }; output: ActResult & { id?: string } }
+    'beads.create': { input: { title: string; type: string; priority: number; parent?: string; description?: string }; output: ActResult & { id?: string } }
     /** Where and with what an agent can start: the repository's worktrees (focused first) and the enabled agents. */
     'beads.targets': {
       output: { current: string | null; workspaces: LaunchTarget[]; agents: { id: string; name: string }[]; defaultAgent: string | null }

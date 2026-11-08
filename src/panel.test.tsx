@@ -61,7 +61,8 @@ test('lists ready beads, opens one, and goes back', async () => {
   await view.press({ label: 'Refresh' })
   assert.ok(view.find({ label: 'Task c' }), 'current task shown')
   // Both tasks in progress sit at the top, newest first.
-  assert.ok(view.summary().includes('List "In progress (2)": 2 item(s)'), view.summary().join(' | '))
+  assert.ok(view.find({ text: 'In progress (2)' }))
+  assert.ok(view.find({ label: 'Task b' }) && view.find({ label: 'Task c' }))
   // All is the default tab, To do the only open section: `a` shows, `e` waits in the folded Blocked.
   assert.ok(view.summary().some((l) => l.includes('"All (5)" selected')), view.summary().join(' | '))
   assert.ok(view.find({ label: 'Blocked (1)' }))
@@ -171,4 +172,124 @@ test('an epic in progress is never the current task', () => {
 
 test('task text headings become bold lines, everything else stays', () => {
   assert.equal(panel.flat('## Goal\nShip it\n### Notes ##\n- #1 is a tag'), '**Goal**\nShip it\n**Notes**\n- #1 is a tag')
+})
+
+test('creates a task with a description and an epic, starts an agent, and remembers it', async () => {
+  const calls: { name: string; input: unknown }[] = []
+  const record = (name: string, answer: unknown) => (input: unknown) => (calls.push({ name, input }), answer)
+  const epic = { ...bead('E', 'open', '2026-01-01'), issue_type: 'epic' }
+  const made: Bead[] = []
+  const host = mockHost({
+    requests: {
+      'beads.list': () => ({ workspace: '/w', beads: [...beads, epic, ...made], ready: ['a', ...made.map((b) => b.id)] }),
+      'beads.show': ({ id }) => ({ bead: { ...bead(id, 'open', '2026-01-01'), created_at: '2026-01-01' } }),
+      'beads.create': (input: unknown) => {
+        made.push(bead('new-1', 'open', '2026-01-09'))
+        return record('create', { ok: true, id: 'new-1' })(input)
+      },
+      'beads.targets': () => ({
+        current: 'r::/w',
+        workspaces: [{ id: 'r::/w', name: 'w', branch: 'main' }],
+        agents: [{ id: 'claude', name: 'Claude' }],
+        defaultAgent: 'claude'
+      }),
+      'beads.launch': record('launch', { ok: true, where: 'w' })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ label: 'Refresh' })
+  await view.press({ label: 'New task' })
+  await view.type({ label: 'Title' }, 'Add a coupon field')
+  await view.type({ label: 'Description' }, 'Shown **under** the total')
+  await view.select({ label: 'Epic' }, 'E')
+  await view.press({ text: 'Create and start' })
+  assert.deepEqual(calls[0], {
+    name: 'create',
+    input: { title: 'Add a coupon field', type: 'task', priority: 2, parent: 'E', description: 'Shown **under** the total' }
+  })
+
+  // Straight into the launch form for the new task.
+  assert.equal(view.find({ label: 'Prompt' })?.props.value, panel.promptFor({ id: 'new-1', title: '' }))
+  await view.press({ text: 'Launch' })
+  assert.equal(calls.at(-1)?.name, 'launch')
+
+  // Back on the task: it says an agent is on its way, and a second Start is no longer the obvious button.
+  assert.ok(view.find({ text: 'Start again' }))
+  assert.ok(view.find({ text: 'Claude is starting in w.' }))
+  // Reopened later, the task still says an agent is on its way until the agent claims it.
+  await view.press({ label: 'Back' })
+  await view.press({ label: 'Task new-1' })
+  assert.ok(view.find({ text: 'Claude was started on this task. It moves to In progress once the agent claims it.' }))
+  assert.ok(view.find({ text: 'Start again' }))
+  assert.deepEqual(view.errors, [])
+  assert.deepEqual(view.refusals, [])
+  await view.unmount()
+})
+
+test('searches, edits, manages blockers, closes as duplicate and releases', async () => {
+  const calls: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'beads.list': () => ({ workspace: '/w', beads, ready: ['a'] }),
+      'beads.show': ({ id }) => ({
+        bead: {
+          ...(beads.find((b) => b.id === id) ?? bead(id, 'open', '2026-01-01')),
+          created_at: '2026-01-01',
+          description: 'Old text',
+          dependencies: id === 'a' ? [{ id: 'e', title: 'Task e', status: 'open', dependency_type: 'blocks' }] : []
+        }
+      }),
+      'beads.act': (input) => (calls.push(input), { ok: true })
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ label: 'Refresh' })
+
+  // Search matches title or id; no match offers to create it.
+  await view.type({ label: 'Search tasks' }, 'task d')
+  assert.ok(view.find({ label: 'Task d' }))
+  assert.equal(view.find({ label: 'Task a' }), null)
+  await view.type({ label: 'Search tasks' }, 'nothing like this', { replace: true })
+  assert.ok(view.find({ text: 'Create “nothing like this”' }))
+  await view.type({ label: 'Search tasks' }, 'Task a', { replace: true })
+  await view.press({ label: 'Task a' })
+
+  // Edit: the form starts from the task's current text.
+  await view.press({ label: 'Edit' })
+  assert.equal(view.find({ label: 'Description' })?.props.value, 'Old text')
+  await view.type({ label: 'Title' }, 'Task a, renamed', { replace: true })
+  await view.press({ text: 'Save' })
+  assert.deepEqual(calls.at(-1), {
+    id: 'a',
+    action: 'edit',
+    fields: { title: 'Task a, renamed', type: 'task', description: 'Old text', acceptance: '', design: '', notes: '' }
+  })
+
+  // Blockers are managed in their own section: remove one, add another.
+  await view.toggle({ label: 'Blocked by (1)' })
+  await view.press({ label: 'Remove blocker Task e' })
+  assert.deepEqual(calls.at(-1), { id: 'a', action: 'unblock', other: 'e' })
+  await view.select({ label: 'Add a blocker…' }, 'b')
+  assert.deepEqual(calls.at(-1), { id: 'a', action: 'block', other: 'b' })
+
+  // Finish as a duplicate: Close stays off until the other task is picked.
+  await view.press({ text: 'Finish' })
+  await view.select({ label: 'How is it closed?' }, 'duplicate')
+  assert.equal(view.find({ text: 'Close task' })?.disabled, true)
+  await view.select({ label: 'Which task' }, 'c')
+  await view.press({ text: 'Close task' })
+  assert.deepEqual(calls.at(-1), { id: 'a', action: 'duplicate', other: 'c' })
+
+  // Release a task in progress, after a confirmation.
+  await view.press({ label: 'Back' })
+  await view.type({ label: 'Search tasks' }, '', { replace: true })
+  await view.press({ label: 'Task c' })
+  await view.press({ text: 'Release' })
+  assert.ok(view.find({ text: 'Take this task back from its holder? It returns to To do and stops being held.' }))
+  await view.press({ text: 'Release' })
+  assert.deepEqual(calls.at(-1), { id: 'c', action: 'release' })
+  assert.deepEqual(view.errors, [])
+  assert.deepEqual(view.refusals, [])
+  assert.deepEqual(view.warnings, [])
+  await view.unmount()
 })

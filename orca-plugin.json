@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "beads-orca-ui",
   "name": "Beads Panel",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "A minimal beads panel for Orca: what's in progress, what's ready, and one press to hand a task to an agent.",
   "author": {
     "name": "maximechbt",

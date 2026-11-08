@@ -26,6 +26,19 @@ test('turns each action into bd arguments that cannot read as flags', async () =
   assert.deepEqual(await args({ action: 'unassign' }), ['update', '--assignee=', '--', '-x'])
   assert.deepEqual(await args({ action: 'comment', text: ' -fait ' }), ['comments', 'add', '--', '-x', '-fait'])
   assert.equal(typeof (await args({ action: 'comment', text: '  ' })), 'string')
+  assert.deepEqual(await args({ action: 'edit', fields: { title: ' New ', description: '' } }), [
+    'update', '--title=New', '--description=', '--', '-x'
+  ])
+  assert.equal(typeof (await args({ action: 'edit', fields: { title: ' ' } })), 'string')
+  assert.equal(typeof (await args({ action: 'edit', fields: { type: 'rm' } })), 'string')
+  assert.equal(typeof (await args({ action: 'edit', fields: {} })), 'string')
+  assert.deepEqual(await args({ action: 'block', other: '-y' }), ['dep', 'add', '--', '-x', '-y'])
+  assert.deepEqual(await args({ action: 'unblock', other: 'y' }), ['dep', 'remove', '--', '-x', 'y'])
+  assert.equal(typeof (await args({ action: 'block', other: '-x' })), 'string')
+  assert.deepEqual(await args({ action: 'release' }), ['unclaim', '--force', '--', '-x'])
+  assert.deepEqual(await args({ action: 'duplicate', other: 'y' }), ['duplicate', '--of=y', '--', '-x'])
+  assert.deepEqual(await args({ action: 'supersede', other: 'y' }), ['supersede', '--with=y', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'supersede' })), 'string')
   assert.equal(typeof (await args({ action: 'rm -rf' } as never)), 'string')
 })
 
@@ -51,6 +64,8 @@ test('refuses bad input before running anything', async () => {
   const worker = await mountWorker(main, { host })
   assert.equal((await worker.request('beads.create', { title: ' ', type: 'task', priority: 2 })).ok, false)
   assert.equal((await worker.request('beads.create', { title: 't', type: 'rm', priority: 2 })).ok, false)
+  const huge = 'x'.repeat(20_001)
+  assert.equal((await worker.request('beads.create', { title: 't', type: 'task', priority: 2, description: huge })).ok, false)
   const launch = (input: object) => worker.request('beads.launch', { agent: 'claude', prompt: 'p', target: 'r::/w', ...input })
   assert.equal((await launch({ prompt: ' ' })).ok, false)
   assert.equal((await launch({ agent: 'rm -rf' })).ok, false)

@@ -49,17 +49,34 @@ const tab = atom('filter', 'all', { persist: 'plugin' })
 
 type Ref = { id: string; title: string }
 /** A form drawn over the list or the detail: a new bead, or starting an agent on one. */
-type Form = { kind: 'create'; parent: Ref | null } | { kind: 'launch'; bead: Ref }
+type Form = { kind: 'create'; parent: Ref | null } | { kind: 'launch'; bead: Ref } | { kind: 'edit'; bead: Ref }
 // Forms and their drafts survive closing the panel, per workspace, like an unsent message.
 const form = atom<Form | null>('form', null, { persist: 'workspace' })
-const draft = atom('draft', { title: '', type: 'task', priority: '2' }, { persist: 'workspace' })
+const draft = atom(
+  'draft',
+  { title: '', type: 'task', priority: '2', description: '', parent: '' },
+  { persist: 'workspace' }
+)
+/** Which agent was launched on which task, until the agent claims it: a second Start is then a deliberate one. */
+const launched = atom<Record<string, string>>('launched', {}, { persist: 'workspace' })
 const launch = atom('launch', { agent: '', target: '', name: '', prompt: '' }, { persist: 'workspace' })
 type Targets = { workspaces: LaunchTarget[]; agents: { id: string; name: string }[] }
 const targets = atom<Targets | null>(null)
 /** The comment being written on the open bead. */
 const comment = atom('')
 /** The close reason being typed; null when no close is being confirmed. */
-const closing = atom<string | null>(null)
+const closing = atom<{ how: 'done' | 'duplicate' | 'supersede'; reason: string; other: string } | null>(null)
+/** The bead whose release is being confirmed. */
+const releasing = atom<string | null>(null)
+/** A bead's editable fields, drafted; kept per workspace like the other forms. */
+const editDraft = atom(
+  'editDraft',
+  { title: '', type: 'task', description: '', acceptance: '', design: '', notes: '' },
+  { persist: 'workspace' }
+)
+const query = atom('query', '', { persist: 'workspace' })
+/** Orca's Select refuses an empty value, so "none picked" has its own. */
+const NONE = 'none'
 const busy = atom(false)
 /** What the last write said: a success line, or why it failed. */
 const outcome = atom<({ notice?: string } & Problem) | null>(null)
@@ -90,6 +107,7 @@ function open(id: string): void {
   set(openId, id)
   set(detail, null)
   set(closing, null)
+  set(releasing, null)
   set(comment, '')
   set(outcome, null)
   void loadDetail(id)
@@ -136,31 +154,62 @@ async function addComment(id: string): Promise<void> {
 }
 
 async function confirmClose(id: string): Promise<void> {
-  if (await act({ id, action: 'close', reason: read(closing) ?? '' }, t().closed)) set(closing, null)
+  const c = read(closing)
+  if (!c) return
+  const done =
+    c.how === 'done'
+      ? await act({ id, action: 'close', reason: c.reason }, t().closed)
+      : await act({ id, action: c.how, other: c.other }, t().closed)
+  if (done) set(closing, null)
 }
 
-function openCreate(parent: Ref | null, type = 'task'): void {
-  set(draft, { title: '', type, priority: '2' })
+async function confirmRelease(id: string): Promise<void> {
+  if (await act({ id, action: 'release' }, t().released)) set(releasing, null)
+}
+
+function openEdit(b: BeadDetail): void {
+  set(editDraft, {
+    title: b.title,
+    type: b.issue_type ?? 'task',
+    description: b.description ?? '',
+    acceptance: b.acceptance_criteria ?? '',
+    design: b.design ?? '',
+    notes: b.notes ?? ''
+  })
+  set(outcome, null)
+  set(form, { kind: 'edit', bead: { id: b.id, title: b.title } })
+}
+
+async function submitEdit(id: string): Promise<void> {
+  const d = read(editDraft)
+  if (!d.title.trim()) return
+  if (await act({ id, action: 'edit', fields: d }, t().saved)) set(form, null)
+}
+
+function openCreate(parent: Ref | null, type = 'task', title = ''): void {
+  set(draft, { title, type, priority: '2', description: '', parent: parent?.id ?? '' })
   set(outcome, null)
   set(form, { kind: 'create', parent })
 }
 
-async function submitCreate(parent: Ref | null): Promise<void> {
+/** Creates the drafted task, then opens it, or with `andStart` goes straight to launching an agent on it. */
+async function submitCreate(andStart = false): Promise<void> {
   const d = read(draft)
   if (!d.title.trim()) return
   const r = await write(() =>
-    // `parent: undefined` would not be JSON: Orca refuses the request, so leave the key out.
+    // Optional keys are left out rather than undefined: Orca refuses requests that are not JSON.
     plugin.request('beads.create', {
       title: d.title,
       type: d.type,
       priority: Number(d.priority),
-      ...(parent ? { parent: parent.id } : {})
+      ...(d.parent ? { parent: d.parent } : {}),
+      ...(d.description?.trim() ? { description: d.description } : {})
     })
   )
-  if (r?.id) {
-    set(form, null)
-    open(r.id)
-  }
+  if (!r?.id) return
+  open(r.id)
+  if (andStart) void openLaunch({ id: r.id, title: d.title.trim() })
+  else set(form, null)
 }
 
 /** What the agent is told by default; the person can rewrite it before launching. */
@@ -195,6 +244,7 @@ async function loadTargets(): Promise<void> {
 }
 
 async function submitLaunch(): Promise<void> {
+  const f = read(form)
   const l = read(launch)
   const agentName = read(targets)?.agents.find((a) => a.id === l.agent)?.name ?? l.agent
   const r = await write(
@@ -207,7 +257,10 @@ async function submitLaunch(): Promise<void> {
       ),
     (r) => t().launched(agentName, r.where ?? '')
   )
-  if (r) set(form, null)
+  if (r) {
+    if (f?.kind === 'launch') set(launched, { ...read(launched), [f.bead.id]: agentName })
+    set(form, null)
+  }
 }
 
 function refresh(): void {
@@ -338,6 +391,14 @@ function Section({
   )
 }
 
+/** Title or id contains every word of the query, any case. */
+export const matches = (b: Bead, q: string) =>
+  q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => `${b.title} ${b.id}`.toLowerCase().includes(word))
+
 /** Work order: what is moving, then what is open by priority, then what is done. */
 const rank = (b: Bead) => (isDoing(b) ? 0 : b.status === 'closed' ? 2 : 1)
 const byWorkOrder = (a: Bead, b: Bead) => rank(a) - rank(b) || byPriority(a, b)
@@ -384,7 +445,7 @@ function EpicSection({
     <Collapsible
       title={epic.title}
       description={total ? `${t().epicDone(done, total)} · ${epic.id}` : epic.id}
-      defaultOpen={epic.status !== 'closed'}
+      defaultOpen={false}
     >
       <Stack gap="sm">
         {total > 0 && (
@@ -438,65 +499,96 @@ function ListView({ answer }: { answer: ListAnswer }) {
   // You and your agents can each be on a task: show every one, newest first.
   const doing = current ? [current, ...inProgress] : []
   const heading = doing.length > 1 ? `${t().inProgress} (${doing.length})` : t().currentBead
+  const q = read(query)
+  const found = q.trim() ? answer.beads.filter((b) => matches(b, q)).sort(byWorkOrder) : []
   return (
     <Stack gap="lg">
-      <Stack gap="xs">
-        <Heading level={3}>{heading}</Heading>
-        {doing.length ? (
-          <List label={heading}>
-            {doing.map((b) => (
-              <ListItem
-                title={b.title}
-                description={meta(b, false)}
-                icon="activity"
-                current
-                onPress={() => open(b.id)}
-              />
-            ))}
-          </List>
-        ) : (
-          <Text muted size="sm">
-            {t().noCurrentBead}
-          </Text>
-        )}
-      </Stack>
-      <Tabs label={t().filter} value={read(tab)} onChange={(v) => set(tab, v)}>
-        <Tab value="all" label={`${t().all} (${answer.beads.length})`}>
-          <Stack gap="sm">
-            <Section byType title={t().blocked} beads={blocked} ready={ready} open={false} />
-            <Section byType title={t().todo} beads={todo.filter((b) => !blocked.includes(b))} ready={ready} open />
-            {/* Epics in progress included: All lists everything. */}
-            <Section
-              byType
-              title={t().inProgress}
-              beads={answer.beads.filter(isDoing).sort(byUpdatedDesc)}
-              ready={ready}
-              open={false}
-            />
-            <Section byType title={t().done} beads={done} ready={ready} open={false} />
-            {answer.beads.length === 0 && (
-              <EmptyState icon="layers" title={t().noBeads} description={t().noBeadsHint}>
-                <Button variant="outline" size="sm" icon="add" onPress={() => openCreate(null)}>
-                  {t().newBead}
-                </Button>
-              </EmptyState>
-            )}
-          </Stack>
-        </Tab>
-        <Tab value="ready" label={`${t().ready} (${readyBeads.length})`}>
-          {readyBeads.length ? (
-            <BeadList label={t().ready} beads={readyBeads} ready={ready} />
+      <Input
+        type="search"
+        label={t().search}
+        labelHidden
+        value={q}
+        placeholder={t().searchPlaceholder}
+        onChange={(v) => set(query, v)}
+        // Enter on a search with no match turns it into a new task.
+        onSubmit={() => q.trim() && !found.length && openCreate(null, 'task', q.trim())}
+      />
+      {!q.trim() && (
+        <Stack gap="xs">
+          <Heading level={3}>{heading}</Heading>
+          {doing.length ? (
+            // One list per task: highlighted rows in a shared list touch, separate ones keep a gap.
+            <Stack gap="xs">
+              {doing.map((b) => (
+                <List label={b.title}>
+                  <ListItem
+                    title={b.title}
+                    description={meta(b, false)}
+                    icon="activity"
+                    current
+                    onPress={() => open(b.id)}
+                  />
+                </List>
+              ))}
+            </Stack>
           ) : (
-            <EmptyState icon="pause" title={t().nothingReady} description={t().nothingReadyHint} />
+            <Text muted size="sm">
+              {t().noCurrentBead}
+            </Text>
           )}
-        </Tab>
-        <Tab value="epics" label={`${t().epics} (${answer.beads.filter((b) => b.issue_type === 'epic').length})`}>
-          <EpicsTab beads={answer.beads} ready={ready} />
-        </Tab>
-      </Tabs>
+        </Stack>
+      )}
+      {q.trim() ? (
+        found.length ? (
+          <BeadList label={t().search} beads={found} ready={ready} />
+        ) : (
+          <EmptyState icon="search" title={t().noMatch(q.trim())}>
+            <Button variant="outline" size="sm" icon="add" onPress={() => openCreate(null, 'task', q.trim())}>
+              {t().createNamed(q.trim())}
+            </Button>
+          </EmptyState>
+        )
+      ) : (
+        <Tabs label={t().filter} value={read(tab)} onChange={(v) => set(tab, v)}>
+          <Tab value="all" label={`${t().all} (${answer.beads.length})`}>
+            <Stack gap="sm">
+              <Section byType title={t().blocked} beads={blocked} ready={ready} open={false} />
+              <Section byType title={t().todo} beads={todo.filter((b) => !blocked.includes(b))} ready={ready} open />
+              {/* Epics in progress included: All lists everything. */}
+              <Section
+                byType
+                title={t().inProgress}
+                beads={answer.beads.filter(isDoing).sort(byUpdatedDesc)}
+                ready={ready}
+                open={false}
+              />
+              <Section byType title={t().done} beads={done} ready={ready} open={false} />
+              {answer.beads.length === 0 && (
+                <EmptyState icon="layers" title={t().noBeads} description={t().noBeadsHint}>
+                  <Button variant="outline" size="sm" icon="add" onPress={() => openCreate(null)}>
+                    {t().newBead}
+                  </Button>
+                </EmptyState>
+              )}
+            </Stack>
+          </Tab>
+          <Tab value="ready" label={`${t().ready} (${readyBeads.length})`}>
+            {readyBeads.length ? (
+              <BeadList label={t().ready} beads={readyBeads} ready={ready} />
+            ) : (
+              <EmptyState icon="pause" title={t().nothingReady} description={t().nothingReadyHint} />
+            )}
+          </Tab>
+          <Tab value="epics" label={`${t().epics} (${answer.beads.filter((b) => b.issue_type === 'epic').length})`}>
+            <EpicsTab beads={answer.beads} ready={ready} />
+          </Tab>
+        </Tabs>
+      )}
     </Stack>
   )
 }
+
+const KNOWN_LINKS = ['parent-child', 'blocks', 'duplicates', 'supersedes']
 
 /** Links split by direction and kind, in the order a person reads them. */
 function linkGroups(b: BeadDetail): [string, BeadLink[]][] {
@@ -505,13 +597,13 @@ function linkGroups(b: BeadDetail): [string, BeadLink[]][] {
   const m = t()
   const groups: [string, BeadLink[]][] = [
     [m.parent, deps.filter((l) => l.dependency_type === 'parent-child')],
-    [m.blockedBy, deps.filter((l) => l.dependency_type === 'blocks')],
     [m.children, dents.filter((l) => l.dependency_type === 'parent-child')],
     [m.blocks, dents.filter((l) => l.dependency_type === 'blocks')],
-    [
-      m.related,
-      [...deps, ...dents].filter((l) => l.dependency_type !== 'parent-child' && l.dependency_type !== 'blocks')
-    ]
+    [m.duplicateOf, deps.filter((l) => l.dependency_type === 'duplicates')],
+    [m.supersededBy, deps.filter((l) => l.dependency_type === 'supersedes')],
+    [m.duplicates, dents.filter((l) => l.dependency_type === 'duplicates')],
+    [m.replaces, dents.filter((l) => l.dependency_type === 'supersedes')],
+    [m.related, [...deps, ...dents].filter((l) => !KNOWN_LINKS.includes(l.dependency_type))]
   ]
   return groups.filter(([, links]) => links.length > 0)
 }
@@ -542,7 +634,7 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
       ) : (
         <Stack gap="lg">
           <Stack gap="sm">
-            <TitleRow title={b.title} level={1} onClose={back} />
+            <TitleRow title={b.title} level={1} onClose={back} onEdit={() => openEdit(b)} />
             <Row gap="xs" wrap>
               <Badge tone={status!.tone}>{status!.label}</Badge>
               {/* P0 and P1 are the one fact that should jump out. */}
@@ -571,6 +663,7 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
                 <Markdown content={flat(text)} />
               </Collapsible>
             ))}
+            <Blockers b={b} />
             {linkGroups(b).map(([label, links]) => (
               <Collapsible title={`${label} (${links.length})`} defaultOpen={false}>
                 <List label={label}>
@@ -641,21 +734,66 @@ function Outcome() {
 
 function Actions({ b }: { b: BeadDetail }) {
   const isBusy = read(busy)
-  const reason = read(closing)
+  const c = read(closing)
   const closed = b.status === 'closed'
   const doing = isDoing(b)
-  if (reason !== null)
+  // An agent launched here has not claimed the task yet: say so, and make starting another one deliberate.
+  const startedBy = !closed && !doing ? read(launched)[b.id] : undefined
+  if (read(releasing) === b.id)
     return (
       <Stack gap="sm">
-        <Input
-          label={t().closeReasonLabel}
-          value={reason}
-          placeholder={t().closeReasonPlaceholder}
-          onChange={(v) => set(closing, v)}
-          onSubmit={() => confirmClose(b.id)}
-        />
+        <Text size="sm">{t().releaseConfirm(b.assignee ?? t().holder)}</Text>
         <Row gap="xs">
-          <Button variant="solid" tone="accent" icon="check" disabled={isBusy} onPress={() => confirmClose(b.id)}>
+          <Button variant="solid" tone="warning" disabled={isBusy} onPress={() => confirmRelease(b.id)}>
+            {t().release}
+          </Button>
+          <Button variant="ghost" onPress={() => set(releasing, null)}>
+            {t().cancel}
+          </Button>
+        </Row>
+        <Outcome />
+      </Stack>
+    )
+  if (c !== null) {
+    // Any other task can be the canonical one or the replacement.
+    const others = (read(list)?.beads ?? []).filter((o) => o.id !== b.id)
+    const needsOther = c.how !== 'done'
+    return (
+      <Stack gap="sm">
+        <Select
+          label={t().closeHow}
+          value={c.how}
+          options={[
+            { value: 'done', label: t().closeDone },
+            { value: 'duplicate', label: t().closeDuplicate },
+            { value: 'supersede', label: t().closeSupersede }
+          ]}
+          onChange={(how) => set(closing, { ...c, how: how as typeof c.how })}
+        />
+        {needsOther ? (
+          <Select
+            label={t().closeOther}
+            value={c.other || NONE}
+            options={[{ value: NONE, label: t().pickTask }, ...others.map((o) => ({ value: o.id, label: o.title }))]}
+            onChange={(v) => set(closing, { ...c, other: v === NONE ? '' : v })}
+          />
+        ) : (
+          <Input
+            label={t().closeReasonLabel}
+            value={c.reason}
+            placeholder={t().closeReasonPlaceholder}
+            onChange={(reason) => set(closing, { ...c, reason })}
+            onSubmit={() => confirmClose(b.id)}
+          />
+        )}
+        <Row gap="xs">
+          <Button
+            variant="solid"
+            tone="accent"
+            icon="check"
+            disabled={isBusy || (needsOther && !c.other)}
+            onPress={() => confirmClose(b.id)}
+          >
             {t().closeBead}
           </Button>
           <Button variant="ghost" onPress={() => set(closing, null)}>
@@ -665,30 +803,37 @@ function Actions({ b }: { b: BeadDetail }) {
         <Outcome />
       </Stack>
     )
+  }
   return (
     <Stack gap="sm">
       <Row gap="xs" wrap>
         {!closed && !doing && (
           <Button
-            variant="solid"
-            tone="accent"
+            variant={startedBy ? 'outline' : 'solid'}
+            tone={startedBy ? undefined : 'accent'}
             icon="play"
             disabled={isBusy}
             // Starting a task means handing it to an agent; the agent claims it.
             onPress={() => openLaunch(b)}
           >
-            {t().start}
+            {startedBy ? t().startAgain : t().start}
           </Button>
         )}
         {!closed && (
+          // Agents usually close their own tasks: finishing by hand stays a secondary action.
           <Button
-            variant={doing ? 'solid' : 'outline'}
-            tone={doing ? 'accent' : undefined}
+            variant="outline"
             icon="check"
             disabled={isBusy}
-            onPress={() => set(closing, '')}
+            onPress={() => set(closing, { how: 'done', reason: '', other: '' })}
           >
             {t().finish}
+          </Button>
+        )}
+        {doing && (
+          // Takes the task back from whoever holds it, a crashed agent included; confirmed first.
+          <Button variant="ghost" disabled={isBusy} onPress={() => set(releasing, b.id)}>
+            {t().release}
           </Button>
         )}
         {closed && (
@@ -707,6 +852,11 @@ function Actions({ b }: { b: BeadDetail }) {
           </Button>
         )}
       </Row>
+      {startedBy && !read(outcome) && (
+        <Text muted size="sm">
+          {t().agentStarted(startedBy)}
+        </Text>
+      )}
       <Outcome />
     </Stack>
   )
@@ -752,10 +902,68 @@ function Comments({ b }: { b: BeadDetail }) {
   )
 }
 
+function Blockers({ b }: { b: BeadDetail }) {
+  const isBusy = read(busy)
+  const blockers = (b.dependencies ?? []).filter((l) => l.dependency_type === 'blocks')
+  // A task can wait on any other unfinished task it does not already wait on.
+  const candidates = (read(list)?.beads ?? []).filter(
+    (o) => o.id !== b.id && o.status !== 'closed' && !blockers.some((l) => l.id === o.id)
+  )
+  // Always shown, even empty: it is also where a blocker gets added.
+  return (
+    <Collapsible title={blockers.length ? `${t().blockedBy} (${blockers.length})` : t().blockedBy} defaultOpen={false}>
+      <Stack gap="xs">
+        {blockers.length === 0 && (
+          <Text muted size="sm">
+            {t().noBlockers}
+          </Text>
+        )}
+        {blockers.map((l) => (
+          // The row opens the blocker; the × beside it removes the blocker.
+          <Row align="center" gap="xs">
+            <Box grow shrink>
+              <List label={l.title}>
+                <ListItem
+                  title={l.title}
+                  description={`${l.id} · ${statusOf(l.status).label}`}
+                  icon={iconOf(l, null)}
+                  onPress={() => open(l.id)}
+                />
+              </List>
+            </Box>
+            <IconButton
+              icon="close"
+              label={t().removeBlocker(l.title)}
+              tooltip={t().removeBlocker(l.title)}
+              variant="ghost"
+              size="sm"
+              disabled={isBusy}
+              onPress={() => act({ id: b.id, action: 'unblock', other: l.id }, t().blockerRemoved)}
+            />
+          </Row>
+        ))}
+        {candidates.length > 0 && (
+          <Select
+            label={t().addBlocker}
+            labelHidden
+            value={NONE}
+            options={[
+              { value: NONE, label: t().addBlocker },
+              ...candidates.map((o) => ({ value: o.id, label: o.title }))
+            ]}
+            disabled={isBusy}
+            onChange={(v) => v !== NONE && act({ id: b.id, action: 'block', other: v }, t().blockerAdded)}
+          />
+        )}
+      </Stack>
+    </Collapsible>
+  )
+}
+
 function Fields({ b }: { b: BeadDetail }) {
   const isBusy = read(busy)
   return (
-    <Stack gap="sm">
+    <Stack gap="md">
       <Select
         label={t().priority}
         value={String(b.priority)}
@@ -794,17 +1002,22 @@ function TitleRow({
   title,
   level = 2,
   onClose,
+  onEdit,
   children
 }: {
   title: string | null
   level?: 1 | 2
   onClose: () => void
+  onEdit?: () => void
   children?: unknown
 }) {
   return (
     <Row justify="between" align="start" gap="sm">
       {title === null ? <Box grow>{children}</Box> : <Heading level={level}>{title}</Heading>}
-      <IconButton icon="close" label={t().back} tooltip={t().back} variant="ghost" onPress={onClose} />
+      <Row gap="xs">
+        {onEdit && <IconButton icon="edit" label={t().edit} tooltip={t().edit} variant="ghost" onPress={onEdit} />}
+        <IconButton icon="close" label={t().back} tooltip={t().back} variant="ghost" onPress={onClose} />
+      </Row>
     </Row>
   )
 }
@@ -822,43 +1035,114 @@ function FormHeader({ title, sub }: { title: string; sub?: string }) {
   )
 }
 
-function CreateView({ parent }: { parent: Ref | null }) {
-  const d = read(draft)
+function EditView({ bead }: { bead: Ref }) {
+  const d = read(editDraft)
+  const field = (key: keyof typeof d) => (v: string) => set(editDraft, { ...read(editDraft), [key]: v })
   return (
     <Stack gap="lg">
-      <FormHeader
-        title={parent ? t().newSubtask : t().newBead}
-        sub={parent ? t().inParent(parent.title, parent.id) : undefined}
-      />
+      <FormHeader title={t().editTitle} sub={bead.id} />
+      <Input label={t().title} value={d.title} onChange={field('title')} onSubmit={() => submitEdit(bead.id)} />
+      <Select label={t().type} value={d.type} options={types()} onChange={field('type')} />
+      <Textarea label={t().description} rows={5} value={d.description} onChange={field('description')} />
+      <Textarea label={t().acceptance} rows={3} value={d.acceptance} onChange={field('acceptance')} />
+      {/* Rarely filled: folded unless the task already has some. */}
+      <Collapsible title={t().designAndNotes} defaultOpen={Boolean(d.design || d.notes)}>
+        <Stack gap="md">
+          <Textarea label={t().design} rows={3} value={d.design} onChange={field('design')} />
+          <Textarea label={t().notes} rows={3} value={d.notes} onChange={field('notes')} />
+        </Stack>
+      </Collapsible>
+      <Row gap="xs">
+        <Button
+          variant="solid"
+          tone="accent"
+          icon="check"
+          disabled={read(busy) || !d.title.trim()}
+          onPress={() => submitEdit(bead.id)}
+        >
+          {t().save}
+        </Button>
+        <Button variant="ghost" onPress={closeForm}>
+          {t().cancel}
+        </Button>
+      </Row>
+      <Outcome />
+    </Stack>
+  )
+}
+
+const NO_EPIC = NONE
+
+function CreateView() {
+  const d = read(draft)
+  // Open epics a new task can join; none to pick from means no picker.
+  const epics = (read(list)?.beads ?? []).filter((b) => b.issue_type === 'epic' && b.status !== 'closed')
+  const canStart = d.type !== 'epic'
+  return (
+    <Stack gap="lg">
+      <FormHeader title={d.parent ? t().newSubtask : t().newBead} />
       <Input
         label={t().title}
         value={d.title}
         placeholder={t().titlePlaceholder}
         onChange={(title) => set(draft, { ...read(draft), title })}
-        onSubmit={() => submitCreate(parent)}
+        onSubmit={() => submitCreate()}
       />
-      <Select
-        label={t().type}
-        value={d.type}
-        options={types()}
-        onChange={(type) => set(draft, { ...read(draft), type })}
+      <Textarea
+        label={t().description}
+        rows={3}
+        value={d.description ?? ''}
+        placeholder={t().descriptionPlaceholder}
+        onChange={(description) => set(draft, { ...read(draft), description })}
       />
-      <Select
-        label={t().priority}
-        value={d.priority}
-        options={priorities()}
-        onChange={(priority) => set(draft, { ...read(draft), priority })}
-      />
-      <Row gap="xs">
+      {/* Two short choices share a row, so the form stays within one screen. */}
+      <Row gap="sm">
+        <Box grow>
+          <Select
+            label={t().type}
+            value={d.type}
+            options={types()}
+            onChange={(type) => set(draft, { ...read(draft), type })}
+          />
+        </Box>
+        <Box grow>
+          <Select
+            label={t().priority}
+            value={d.priority}
+            options={priorities()}
+            onChange={(priority) => set(draft, { ...read(draft), priority })}
+          />
+        </Box>
+      </Row>
+      {epics.length > 0 && d.type !== 'epic' && (
+        <Select
+          label={t().epic}
+          // Orca's Select refuses an empty value, so "no epic" has its own.
+          value={d.parent || NO_EPIC}
+          options={[{ value: NO_EPIC, label: t().noEpic }, ...epics.map((e) => ({ value: e.id, label: e.title }))]}
+          onChange={(v) => set(draft, { ...read(draft), parent: v === NO_EPIC ? '' : v })}
+        />
+      )}
+      <Row gap="xs" wrap>
         <Button
           variant="solid"
           tone="accent"
           icon="add"
           disabled={read(busy) || !d.title.trim()}
-          onPress={() => submitCreate(parent)}
+          onPress={() => submitCreate()}
         >
           {t().create}
         </Button>
+        {canStart && (
+          <Button
+            variant="outline"
+            icon="play"
+            disabled={read(busy) || !d.title.trim()}
+            onPress={() => submitCreate(true)}
+          >
+            {t().createAndStart}
+          </Button>
+        )}
         <Button variant="ghost" onPress={closeForm}>
           {t().cancel}
         </Button>
@@ -980,7 +1264,9 @@ export default function Panel() {
         </Row>
       </Row>
       {f?.kind === 'create' ? (
-        <CreateView parent={f.parent} />
+        <CreateView />
+      ) : f?.kind === 'edit' ? (
+        <EditView bead={f.bead} />
       ) : f?.kind === 'launch' ? (
         <LaunchView bead={f.bead} />
       ) : id ? (
