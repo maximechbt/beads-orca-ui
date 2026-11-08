@@ -60,7 +60,13 @@ test('lists ready beads, opens one, and goes back', async () => {
   const view = await mount(panel, { host })
   await view.press({ label: 'Refresh' })
   assert.ok(view.find({ label: 'Task c' }), 'current task shown')
-  // Ready tab holds only `a`; `e` is open but waits on something.
+  // Both tasks in progress sit at the top, newest first.
+  assert.ok(view.summary().includes('List "In progress (2)": 2 item(s)'), view.summary().join(' | '))
+  // All is the default tab, To do the only open section: `a` shows, `e` waits in the folded Blocked.
+  assert.ok(view.summary().some((l) => l.includes('"All (5)" selected')), view.summary().join(' | '))
+  assert.ok(view.find({ label: 'Blocked (1)' }))
+  // All's sections already say the state, so rows show the task's type.
+  assert.equal(view.find({ label: 'Task a' })?.props.icon, 'file-text')
   assert.ok(view.find({ label: 'Task a' }))
   assert.equal(view.find({ label: 'Task e' }), null)
 
@@ -69,10 +75,13 @@ test('lists ready beads, opens one, and goes back', async () => {
   assert.ok(view.find({ label: 'Blocked by (1)' }))
   assert.ok(view.find({ label: 'Comments (1)' }))
   // A link opens the linked bead.
+  // Sections start folded: open one to follow its link.
+  assert.equal(view.find({ label: 'Task e' }), null)
+  await view.toggle({ label: 'Blocked by (1)' })
   await view.press({ label: 'Task e' })
   assert.deepEqual(shown, ['a', 'e'])
 
-  await view.press({ text: 'All tasks' })
+  await view.press({ label: 'Back' })
   assert.ok(view.find({ label: 'Task a' }))
 
   // No epic here: the Epics tab says how to make one.
@@ -105,20 +114,20 @@ test('acts on a bead, creates one, and launches an agent in a new worktree', asy
   await view.press({ label: 'Refresh' })
   await view.press({ label: 'Task a' })
 
-  await view.press({ text: 'Start' })
   await view.press({ text: 'Finish' })
   await view.type({ label: 'Reason for closing (optional)' }, 'duplicate')
   await view.press({ text: 'Close task' })
+  await view.toggle({ label: 'Comments' })
   await view.type({ label: 'Add a comment' }, 'Checked with **Ada**')
   await view.press({ text: 'Comment' })
   assert.deepEqual(calls.map((c) => c.input), [
-    { id: 'a', action: 'claim' },
     { id: 'a', action: 'close', reason: 'duplicate' },
     { id: 'a', action: 'comment', text: 'Checked with **Ada**' }
   ])
   assert.equal(view.find({ label: 'Add a comment' })?.props.value, '')
 
-  await view.press({ text: 'Launch an agent' })
+  // Start opens the launch form: starting a task means handing it to an agent.
+  await view.press({ text: 'Start' })
   // Orca's default agent comes preselected; the person picks another.
   assert.equal(view.find({ label: 'Agent' })?.props.value, 'cursor')
   await view.select({ label: 'Agent' }, 'claude')
@@ -145,8 +154,8 @@ test('speaks French when Orca does', async () => {
   const host = mockHost({ requests: { 'beads.list': () => ({ workspace: '/w', beads, ready: ['a'] }) } })
   const view = await mount(panel, { host, locale: 'fr-FR' })
   await view.press({ label: 'Rafraîchir' })
-  assert.ok(view.find({ text: 'Tâche courante' }))
-  assert.ok(view.summary().some((line) => line.includes('Prêtes (1)')))
+  assert.ok(view.find({ text: 'En cours (2)' }))
+  assert.ok(view.summary().some((line) => line.includes('"Toutes (5)" selected')))
   assert.equal(panel.promptFor({ id: 'a', title: 'Task a' }), 'Lance la tâche a')
   await view.unmount()
 })
@@ -158,4 +167,8 @@ test('an epic in progress is never the current task', () => {
   ].map((b) => (b.id === 'E' ? { ...b, issue_type: 'epic' } : b)))
   assert.equal(g.current?.id, 't')
   assert.deepEqual(g.inProgress, [])
+})
+
+test('task text headings become bold lines, everything else stays', () => {
+  assert.equal(panel.flat('## Goal\nShip it\n### Notes ##\n- #1 is a tag'), '**Goal**\nShip it\n**Notes**\n- #1 is a tag')
 })

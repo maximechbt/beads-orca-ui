@@ -2,6 +2,7 @@
 import {
   atom,
   Badge,
+  Box,
   Button,
   Code,
   CodeView,
@@ -43,7 +44,8 @@ const list = atom<ListAnswer | null>(null)
 const openId = atom<string | null>('openId', null, { persist: 'workspace' })
 /** The last answer for a bead, tagged with its id so another bead's answer never shows under this one. */
 const detail = atom<{ id: string; answer: ShowAnswer } | null>(null)
-const tab = atom('tab', 'ready', { persist: 'plugin' })
+// All is the default view; a new key so earlier saved choices do not override it.
+const tab = atom('filter', 'all', { persist: 'plugin' })
 
 type Ref = { id: string; title: string }
 /** A form drawn over the list or the detail: a new bead, or starting an agent on one. */
@@ -253,41 +255,85 @@ const TONES: Record<string, 'neutral' | 'accent' | 'success' | 'warning'> = {
 }
 const statusOf = (s: string) => ({ label: t().status[s] ?? s, tone: TONES[s] ?? ('neutral' as const) })
 
-/** One glyph per state, so a list reads at a glance; `ready` tells open beads that can start from waiting ones. */
-function iconOf(b: { status: string }, ready: Set<string> | null) {
+const TYPE_ICONS: Record<string, 'bug' | 'layers' | 'lightbulb' | 'wrench'> = {
+  bug: 'bug',
+  epic: 'layers',
+  feature: 'lightbulb',
+  chore: 'wrench'
+}
+
+/**
+ * A state glyph when the state matters (done, moving, waiting...), else the task's type.
+ * Never a chevron: rows open a task, they do not expand. `ready` tells open beads that can start from waiting ones.
+ */
+function iconOf(b: { status: string; issue_type?: string }, ready: Set<string> | null) {
   if (b.status === 'closed') return 'check'
   if (isDoing(b as Bead)) return 'activity'
   if (b.status === 'deferred') return 'calendar'
   if (b.status === 'pinned') return 'star'
   if (b.status === 'blocked' || (ready && !ready.has((b as Bead).id))) return 'pause'
-  return 'next'
+  return typeIcon(b)
 }
+
+const typeIcon = (b: { issue_type?: string }) => TYPE_ICONS[b.issue_type ?? ''] ?? 'file-text'
 
 /** Blockers by title: an id says nothing at a glance. */
 const titleOf = (id: string) => read(list)?.beads.find((b) => b.id === id)?.title ?? id
 const waiting = (b: Bead) => (b.waits_on?.length ? t().waitsOn(b.waits_on.map(titleOf).join(', ')) : t().waiting)
 
+// What decides the next move comes first; the id, for `bd` and agents, comes last.
 const meta = (b: Bead, blocked: boolean) =>
-  [b.id, `P${b.priority}`, blocked ? waiting(b) : null, b.assignee].filter(Boolean).join(' · ')
+  [`P${b.priority}`, blocked ? waiting(b) : null, b.assignee, b.id].filter(Boolean).join(' · ')
 
-function BeadList({ label, beads, ready }: { label: string; beads: Bead[]; ready: Set<string> }) {
+/** Headings inside a task's text become bold lines, so they never outrank the panel's own sections. */
+export const flat = (md: string) => md.replace(/^#{1,6}[ \t]+(.+?)[ \t#]*$/gm, '**$1**')
+
+/** `byType`: the list already says the state (a titled section), so each row shows its type instead. */
+function BeadList({
+  label,
+  beads,
+  ready,
+  byType = false
+}: {
+  label: string
+  beads: Bead[]
+  ready: Set<string>
+  byType?: boolean
+}) {
   return (
     <List label={label}>
       {beads.map((b) => {
-        const icon = iconOf(b, ready)
+        const state = iconOf(b, ready)
         return (
-          <ListItem title={b.title} description={meta(b, icon === 'pause')} icon={icon} onPress={() => open(b.id)} />
+          <ListItem
+            title={b.title}
+            description={meta(b, state === 'pause')}
+            icon={byType ? typeIcon(b) : state}
+            onPress={() => open(b.id)}
+          />
         )
       })}
     </List>
   )
 }
 
-function Section({ title, beads, ready, open }: { title: string; beads: Bead[]; ready: Set<string>; open: boolean }) {
+function Section({
+  title,
+  beads,
+  ready,
+  open,
+  byType = false
+}: {
+  title: string
+  beads: Bead[]
+  ready: Set<string>
+  open: boolean
+  byType?: boolean
+}) {
   if (beads.length === 0) return null
   return (
     <Collapsible title={`${title} (${beads.length})`} defaultOpen={open}>
-      <BeadList label={title} beads={beads} ready={ready} />
+      <BeadList label={title} beads={beads} ready={ready} byType={byType} />
     </Collapsible>
   )
 }
@@ -368,11 +414,7 @@ function EpicsTab({ beads, ready }: { beads: Bead[]; ready: Set<string> }) {
   const { epics, loose } = byEpic(beads)
   if (epics.length === 0)
     return (
-      <EmptyState
-        icon="layers"
-        title={t().noEpics}
-        description={t().noEpicsHint}
-      >
+      <EmptyState icon="layers" title={t().noEpics} description={t().noEpicsHint}>
         <Button variant="outline" size="sm" icon="add" onPress={() => openCreate(null, 'epic')}>
           {t().newEpic}
         </Button>
@@ -392,19 +434,25 @@ function ListView({ answer }: { answer: ListAnswer }) {
   const ready = new Set(answer.ready)
   const { current, inProgress, todo, done } = group(answer.beads)
   const readyBeads = todo.filter((b) => ready.has(b.id))
+  const blocked = todo.filter((b) => b.status === 'blocked' || (b.status === 'open' && !ready.has(b.id)))
+  // You and your agents can each be on a task: show every one, newest first.
+  const doing = current ? [current, ...inProgress] : []
+  const heading = doing.length > 1 ? `${t().inProgress} (${doing.length})` : t().currentBead
   return (
     <Stack gap="lg">
       <Stack gap="xs">
-        <Heading level={3}>{t().currentBead}</Heading>
-        {current ? (
-          <List label={t().currentBead}>
-            <ListItem
-              title={current.title}
-              description={meta(current, false)}
-              icon="activity"
-              current
-              onPress={() => open(current.id)}
-            />
+        <Heading level={3}>{heading}</Heading>
+        {doing.length ? (
+          <List label={heading}>
+            {doing.map((b) => (
+              <ListItem
+                title={b.title}
+                description={meta(b, false)}
+                icon="activity"
+                current
+                onPress={() => open(b.id)}
+              />
+            ))}
           </List>
         ) : (
           <Text muted size="sm">
@@ -413,25 +461,19 @@ function ListView({ answer }: { answer: ListAnswer }) {
         )}
       </Stack>
       <Tabs label={t().filter} value={read(tab)} onChange={(v) => set(tab, v)}>
-        <Tab value="ready" label={`${t().ready} (${readyBeads.length})`}>
-          {readyBeads.length ? (
-            <BeadList label={t().ready} beads={readyBeads} ready={ready} />
-          ) : (
-            <EmptyState
-              icon="pause"
-              title={t().nothingReady}
-              description={t().nothingReadyHint}
-            />
-          )}
-        </Tab>
-        <Tab value="epics" label={`${t().epics} (${answer.beads.filter((b) => b.issue_type === 'epic').length})`}>
-          <EpicsTab beads={answer.beads} ready={ready} />
-        </Tab>
         <Tab value="all" label={`${t().all} (${answer.beads.length})`}>
           <Stack gap="sm">
-            <Section title={t().inProgress} beads={inProgress} ready={ready} open />
-            <Section title={t().todo} beads={todo} ready={ready} open />
-            <Section title={t().done} beads={done} ready={ready} open={false} />
+            <Section byType title={t().blocked} beads={blocked} ready={ready} open={false} />
+            <Section byType title={t().todo} beads={todo.filter((b) => !blocked.includes(b))} ready={ready} open />
+            {/* Epics in progress included: All lists everything. */}
+            <Section
+              byType
+              title={t().inProgress}
+              beads={answer.beads.filter(isDoing).sort(byUpdatedDesc)}
+              ready={ready}
+              open={false}
+            />
+            <Section byType title={t().done} beads={done} ready={ready} open={false} />
             {answer.beads.length === 0 && (
               <EmptyState icon="layers" title={t().noBeads} description={t().noBeadsHint}>
                 <Button variant="outline" size="sm" icon="add" onPress={() => openCreate(null)}>
@@ -440,6 +482,16 @@ function ListView({ answer }: { answer: ListAnswer }) {
               </EmptyState>
             )}
           </Stack>
+        </Tab>
+        <Tab value="ready" label={`${t().ready} (${readyBeads.length})`}>
+          {readyBeads.length ? (
+            <BeadList label={t().ready} beads={readyBeads} ready={ready} />
+          ) : (
+            <EmptyState icon="pause" title={t().nothingReady} description={t().nothingReadyHint} />
+          )}
+        </Tab>
+        <Tab value="epics" label={`${t().epics} (${answer.beads.filter((b) => b.issue_type === 'epic').length})`}>
+          <EpicsTab beads={answer.beads} ready={ready} />
         </Tab>
       </Tabs>
     </Stack>
@@ -456,16 +508,16 @@ function linkGroups(b: BeadDetail): [string, BeadLink[]][] {
     [m.blockedBy, deps.filter((l) => l.dependency_type === 'blocks')],
     [m.children, dents.filter((l) => l.dependency_type === 'parent-child')],
     [m.blocks, dents.filter((l) => l.dependency_type === 'blocks')],
-    [m.related, [...deps, ...dents].filter((l) => l.dependency_type !== 'parent-child' && l.dependency_type !== 'blocks')]
+    [
+      m.related,
+      [...deps, ...dents].filter((l) => l.dependency_type !== 'parent-child' && l.dependency_type !== 'blocks')
+    ]
   ]
   return groups.filter(([, links]) => links.length > 0)
 }
 
 const when = (iso?: string) =>
   iso ? new Date(iso).toLocaleString(env.locale, { dateStyle: 'medium', timeStyle: 'short' }) : null
-
-/** Long text starts folded so links, comments and properties stay within reach. */
-const LONG = 600
 
 function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
   const b = answer?.bead
@@ -479,23 +531,24 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
     : []
   return (
     <Stack gap="lg">
-      <Row>
-        <Button variant="ghost" size="sm" onPress={back}>
-          {t().allBeads}
-        </Button>
-      </Row>
       {answer === null ? (
-        <Skeleton lines={4} label={t().loadingBead(id)} />
+        <TitleRow title={null} onClose={back}>
+          <Skeleton lines={4} label={t().loadingBead(id)} />
+        </TitleRow>
       ) : !b ? (
-        <ProblemState problem={answer.problem ?? 'not-found'} error={answer.error} id={id} />
+        <TitleRow title={null} onClose={back}>
+          <ProblemState problem={answer.problem ?? 'not-found'} error={answer.error} id={id} />
+        </TitleRow>
       ) : (
         <Stack gap="lg">
           <Stack gap="sm">
-            <Heading level={1}>{b.title}</Heading>
+            <TitleRow title={b.title} level={1} onClose={back} />
             <Row gap="xs" wrap>
               <Badge tone={status!.tone}>{status!.label}</Badge>
               {/* P0 and P1 are the one fact that should jump out. */}
-              <Badge tone={b.priority === 0 ? 'danger' : b.priority === 1 ? 'warning' : 'neutral'}>{`P${b.priority}`}</Badge>
+              <Badge
+                tone={b.priority === 0 ? 'danger' : b.priority === 1 ? 'warning' : 'neutral'}
+              >{`P${b.priority}`}</Badge>
               {b.issue_type && <Badge>{t().types[b.issue_type] ?? b.issue_type}</Badge>}
               {(b.labels ?? []).map((l) => (
                 <Badge>{l}</Badge>
@@ -504,9 +557,9 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
           </Stack>
           <Actions b={b} />
           <Stack gap="sm">
-            <Collapsible title={t().description} defaultOpen={(b.description?.length ?? 0) < LONG}>
+            <Collapsible title={t().description} defaultOpen>
               {b.description ? (
-                <Markdown content={b.description} />
+                <Markdown content={flat(b.description)} />
               ) : (
                 <Text muted size="sm">
                   {t().noDescription}
@@ -514,12 +567,12 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
               )}
             </Collapsible>
             {texts.map(([title, text]) => (
-              <Collapsible title={title} defaultOpen={text.length < LONG}>
-                <Markdown content={text} />
+              <Collapsible title={title} defaultOpen={false}>
+                <Markdown content={flat(text)} />
               </Collapsible>
             ))}
             {linkGroups(b).map(([label, links]) => (
-              <Collapsible title={`${label} (${links.length})`} defaultOpen>
+              <Collapsible title={`${label} (${links.length})`} defaultOpen={false}>
                 <List label={label}>
                   {links.map((l) => (
                     <ListItem
@@ -533,7 +586,7 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
               </Collapsible>
             ))}
             <Comments b={b} />
-            <Collapsible title={t().properties} defaultOpen>
+            <Collapsible title={t().properties} defaultOpen={false}>
               <Stack gap="sm">
                 <Fields b={b} />
                 <KeyValue
@@ -602,7 +655,7 @@ function Actions({ b }: { b: BeadDetail }) {
           onSubmit={() => confirmClose(b.id)}
         />
         <Row gap="xs">
-          <Button tone="accent" icon="check" disabled={isBusy} onPress={() => confirmClose(b.id)}>
+          <Button variant="solid" tone="accent" icon="check" disabled={isBusy} onPress={() => confirmClose(b.id)}>
             {t().closeBead}
           </Button>
           <Button variant="ghost" onPress={() => set(closing, null)}>
@@ -617,10 +670,12 @@ function Actions({ b }: { b: BeadDetail }) {
       <Row gap="xs" wrap>
         {!closed && !doing && (
           <Button
+            variant="solid"
             tone="accent"
             icon="play"
             disabled={isBusy}
-            onPress={() => act({ id: b.id, action: 'claim' }, t().started)}
+            // Starting a task means handing it to an agent; the agent claims it.
+            onPress={() => openLaunch(b)}
           >
             {t().start}
           </Button>
@@ -646,11 +701,6 @@ function Actions({ b }: { b: BeadDetail }) {
             {t().reopen}
           </Button>
         )}
-        {!closed && (
-          <Button variant="outline" icon="agent" disabled={isBusy} onPress={() => openLaunch(b)}>
-            {t().launchAgent}
-          </Button>
-        )}
         {b.issue_type === 'epic' && (
           <Button variant="ghost" icon="add" disabled={isBusy} onPress={() => openCreate(b)}>
             {t().subtask}
@@ -667,30 +717,36 @@ function Comments({ b }: { b: BeadDetail }) {
   const comments = b.comments ?? []
   const text = read(comment)
   return (
-    <Collapsible title={comments.length ? `${t().comments} (${comments.length})` : t().comments} defaultOpen>
-      <Stack gap="sm">
-        {comments.map((c) => (
-          <Stack gap="xs">
-            <Text muted size="xs">
-              {c.author} · <RelativeTime at={Date.parse(c.created_at)} />
-            </Text>
-            <Markdown content={c.text} />
+    <Collapsible title={comments.length ? `${t().comments} (${comments.length})` : t().comments} defaultOpen={false}>
+      <Stack gap="lg">
+        {comments.length > 0 && (
+          <Stack gap="md">
+            {comments.map((c) => (
+              <Stack gap="xs">
+                <Text muted size="xs">
+                  {c.author} · <RelativeTime at={Date.parse(c.created_at)} muted />
+                </Text>
+                <Markdown content={flat(c.text)} />
+              </Stack>
+            ))}
           </Stack>
-        ))}
-        <Textarea
-          label={t().addComment}
-          labelHidden
-          rows={3}
-          value={text}
-          placeholder={t().addCommentPlaceholder}
-          onChange={(v) => set(comment, v)}
-          onSubmit={() => addComment(b.id)}
-        />
-        <Row>
-          <Button variant="outline" size="sm" disabled={read(busy) || !text.trim()} onPress={() => addComment(b.id)}>
-            {t().postComment}
-          </Button>
-        </Row>
+        )}
+        <Stack gap="sm">
+          <Textarea
+            label={t().addComment}
+            labelHidden
+            rows={3}
+            value={text}
+            placeholder={t().addCommentPlaceholder}
+            onChange={(v) => set(comment, v)}
+            onSubmit={() => addComment(b.id)}
+          />
+          <Row>
+            <Button variant="outline" size="sm" disabled={read(busy) || !text.trim()} onPress={() => addComment(b.id)}>
+              {t().postComment}
+            </Button>
+          </Row>
+        </Stack>
       </Stack>
     </Collapsible>
   )
@@ -733,15 +789,30 @@ function Fields({ b }: { b: BeadDetail }) {
   )
 }
 
+/** A title with a close (×) at its right, which goes back; Orca has no back-arrow icon. */
+function TitleRow({
+  title,
+  level = 2,
+  onClose,
+  children
+}: {
+  title: string | null
+  level?: 1 | 2
+  onClose: () => void
+  children?: unknown
+}) {
+  return (
+    <Row justify="between" align="start" gap="sm">
+      {title === null ? <Box grow>{children}</Box> : <Heading level={level}>{title}</Heading>}
+      <IconButton icon="close" label={t().back} tooltip={t().back} variant="ghost" onPress={onClose} />
+    </Row>
+  )
+}
+
 function FormHeader({ title, sub }: { title: string; sub?: string }) {
   return (
-    <Stack gap="sm">
-      <Row>
-        <Button variant="ghost" size="sm" onPress={closeForm}>
-          {t().back}
-        </Button>
-      </Row>
-      <Heading level={2}>{title}</Heading>
+    <Stack gap="xs">
+      <TitleRow title={title} onClose={closeForm} />
       {sub && (
         <Text muted size="sm">
           {sub}
@@ -766,7 +837,12 @@ function CreateView({ parent }: { parent: Ref | null }) {
         onChange={(title) => set(draft, { ...read(draft), title })}
         onSubmit={() => submitCreate(parent)}
       />
-      <Select label={t().type} value={d.type} options={types()} onChange={(type) => set(draft, { ...read(draft), type })} />
+      <Select
+        label={t().type}
+        value={d.type}
+        options={types()}
+        onChange={(type) => set(draft, { ...read(draft), type })}
+      />
       <Select
         label={t().priority}
         value={d.priority}
@@ -774,7 +850,13 @@ function CreateView({ parent }: { parent: Ref | null }) {
         onChange={(priority) => set(draft, { ...read(draft), priority })}
       />
       <Row gap="xs">
-        <Button tone="accent" icon="add" disabled={read(busy) || !d.title.trim()} onPress={() => submitCreate(parent)}>
+        <Button
+          variant="solid"
+          tone="accent"
+          icon="add"
+          disabled={read(busy) || !d.title.trim()}
+          onPress={() => submitCreate(parent)}
+        >
           {t().create}
         </Button>
         <Button variant="ghost" onPress={closeForm}>
@@ -801,11 +883,7 @@ function LaunchView({ bead }: { bead: Ref }) {
       {ts === null ? (
         <Skeleton lines={3} label={t().loadingTargets} />
       ) : agents.length === 0 ? (
-        <EmptyState
-          icon="agent"
-          title={t().noAgents}
-          description={t().noAgentsHint}
-        />
+        <EmptyState icon="agent" title={t().noAgents} description={t().noAgentsHint} />
       ) : (
         <Stack gap="md">
           <Select
@@ -823,20 +901,17 @@ function LaunchView({ bead }: { bead: Ref }) {
         </Stack>
       )}
       {isNew && (
-        <Input
-          label={t().worktreeName}
-          value={l.name}
-          onChange={(name) => set(launch, { ...read(launch), name })}
-        />
+        <Input label={t().worktreeName} value={l.name} onChange={(name) => set(launch, { ...read(launch), name })} />
       )}
       <Textarea
         label={t().prompt}
-        rows={6}
+        rows={3}
         value={l.prompt}
         onChange={(prompt) => set(launch, { ...read(launch), prompt })}
       />
       <Row gap="xs">
         <Button
+          variant="solid"
           tone="accent"
           icon="agent"
           disabled={read(busy) || !l.agent || !l.prompt.trim() || (isNew && !l.name.trim())}

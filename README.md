@@ -27,13 +27,13 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 Press a task to see its description, acceptance criteria, design and notes, its parent, blockers and subtasks, and its comments. Long text starts folded. Linked tasks open on a press.
 
-From there you can start a task, finish it with an optional reason, or reopen it. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
+From there you can start a task, which hands it to an agent, finish it with an optional reason, or reopen it. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
 
 ## Act without leaving Orca
 
 ![Launching an agent, creating a task, and the ready list in dark](docs/screenshots/act.png)
 
-- **Launch an agent** on a task. Orca's default agent comes preselected, and you can pick any other installed, enabled agent. Run it in this worktree, in another worktree of the repository, or in a new one. The prompt (`Start task <id>`) can be edited first.
+- **Start** a task to launch an agent on it. Orca's default agent comes preselected, and you can pick any other installed, enabled agent. Run it in this worktree, in another worktree of the repository, or in a new one. The prompt (`Start task <id>`) can be edited first.
 - **+** creates a task, an epic, or a subtask.
 
 The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and on refresh. It speaks English and French, following Orca's language.
@@ -57,7 +57,7 @@ You need:
 
 - **A worker** (`trusted-worker`): a Node process that runs `bd` in the workspace folder.
 - **Read the focused workspace** (`workspace:read`) and **hear agent status changes** (`agent:read`), to know where to run `bd` and when to reload.
-- **Start agents** (`agent:launch`), for "Launch an agent".
+- **Start agents** (`agent:launch`), for **Start**.
 
 A new worktree is made with Orca's own CLI (`orca worktree create`), because the plugin API cannot create one. To preselect an agent, the worker reads Orca's agent settings (`defaultTuiAgent`, `disabledTuiAgents`) and looks for agent CLIs on your login shell's PATH. It never writes to Orca's settings.
 
