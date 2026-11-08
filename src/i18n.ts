@@ -109,10 +109,7 @@ const en = {
   createAndLaunch: 'Create the worktree and launch',
   launch: 'Launch',
   launched: (agent: string, where: string) => `${agent} is starting in ${where}.`,
-  promptFor: (id: string, title: string) =>
-    `Work on beads task ${id}: “${title}”.\n` +
-    `Read it with \`bd show ${id}\`, claim it with \`bd update ${id} --claim\`, ` +
-    `then close it with \`bd close ${id}\` once it is done.`,
+  promptFor: (id: string) => `Start task ${id}`,
 
   // Problems
   retry: 'Try again',
@@ -245,10 +242,7 @@ const fr: Messages = {
   createAndLaunch: 'Créer le worktree et lancer',
   launch: 'Lancer',
   launched: (agent, where) => `${agent} démarre dans ${where}.`,
-  promptFor: (id, title) =>
-    `Travaille sur la tâche beads ${id} : « ${title} ».\n` +
-    `Lis-la avec \`bd show ${id}\`, réclame-la avec \`bd update ${id} --claim\`, ` +
-    `puis ferme-la avec \`bd close ${id}\` quand elle est finie.`,
+  promptFor: (id) => `Lance la tâche ${id}`,
 
   retry: 'Réessayer',
   noWorkspace: 'Aucun workspace ouvert',

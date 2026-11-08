@@ -38,3 +38,7 @@ orca plugin dev load .   # load into Orca (asks for approval)
 ```
 
 The panel is `src/panel.tsx`, its words are in `src/i18n.ts`, and the worker is `src/worker.ts`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

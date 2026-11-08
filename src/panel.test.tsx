@@ -147,6 +147,15 @@ test('speaks French when Orca does', async () => {
   await view.press({ label: 'Rafraîchir' })
   assert.ok(view.find({ text: 'Tâche courante' }))
   assert.ok(view.summary().some((line) => line.includes('Prêtes (1)')))
-  assert.match(panel.promptFor({ id: 'a', title: 'Task a' }), /^Travaille sur la tâche beads a/)
+  assert.equal(panel.promptFor({ id: 'a', title: 'Task a' }), 'Lance la tâche a')
   await view.unmount()
+})
+
+test('an epic in progress is never the current task', () => {
+  const g = panel.group([
+    bead('E', 'in_progress', '2026-02-01', 1),
+    bead('t', 'in_progress', '2026-01-01')
+  ].map((b) => (b.id === 'E' ? { ...b, issue_type: 'epic' } : b)))
+  assert.equal(g.current?.id, 't')
+  assert.deepEqual(g.inProgress, [])
 })

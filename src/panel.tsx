@@ -39,17 +39,19 @@ type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[] } &
 type ShowAnswer = { bead: BeadDetail | null } & Problem
 
 const list = atom<ListAnswer | null>(null)
-/** The bead open in the detail view, or null for the list; keyed so a plugin reload keeps it open. */
-const openId = atom<string | null>('openId', null)
-const detail = atom<ShowAnswer | null>(null)
+/** The bead open in the detail view, or null for the list; each workspace remembers its own. */
+const openId = atom<string | null>('openId', null, { persist: 'workspace' })
+/** The last answer for a bead, tagged with its id so another bead's answer never shows under this one. */
+const detail = atom<{ id: string; answer: ShowAnswer } | null>(null)
 const tab = atom('tab', 'ready', { persist: 'plugin' })
 
 type Ref = { id: string; title: string }
 /** A form drawn over the list or the detail: a new bead, or starting an agent on one. */
 type Form = { kind: 'create'; parent: Ref | null } | { kind: 'launch'; bead: Ref }
-const form = atom<Form | null>(null)
-const draft = atom({ title: '', type: 'task', priority: '2' })
-const launch = atom({ agent: '', target: '', name: '', prompt: '' })
+// Forms and their drafts survive closing the panel, per workspace, like an unsent message.
+const form = atom<Form | null>('form', null, { persist: 'workspace' })
+const draft = atom('draft', { title: '', type: 'task', priority: '2' }, { persist: 'workspace' })
+const launch = atom('launch', { agent: '', target: '', name: '', prompt: '' }, { persist: 'workspace' })
 type Targets = { workspaces: LaunchTarget[]; agents: { id: string; name: string }[] }
 const targets = atom<Targets | null>(null)
 /** The comment being written on the open bead. */
@@ -76,9 +78,9 @@ async function refreshList(): Promise<void> {
 async function loadDetail(id: string): Promise<void> {
   try {
     const answer = await plugin.request('beads.show', { id })
-    if (read(openId) === id) set(detail, answer) // a later click wins
+    if (read(openId) === id) set(detail, { id, answer }) // a later click wins
   } catch (err) {
-    if (read(openId) === id) set(detail, { bead: null, problem: 'failed', error: failed(err) })
+    if (read(openId) === id) set(detail, { id, answer: { bead: null, problem: 'failed', error: failed(err) } })
   }
 }
 
@@ -160,18 +162,30 @@ async function submitCreate(parent: Ref | null): Promise<void> {
 }
 
 /** What the agent is told by default; the person can rewrite it before launching. */
-export const promptFor = (b: Ref) => t().promptFor(b.id, b.title)
+export const promptFor = (b: Ref) => t().promptFor(b.id)
 
 async function openLaunch(bead: Ref): Promise<void> {
   set(launch, { agent: '', target: '', name: bead.id, prompt: promptFor(bead) })
-  set(targets, null)
   set(outcome, null)
   set(form, { kind: 'launch', bead })
+  await loadTargets()
+}
+
+/** What the launch form can offer; a choice already made (a remembered draft) stays when still offered. */
+async function loadTargets(): Promise<void> {
+  set(targets, null)
   try {
     const t = await plugin.request('beads.targets')
     set(targets, { workspaces: t.workspaces, agents: t.agents })
-    // Orca's default agent first; with none, the first one Orca would offer.
-    set(launch, { ...read(launch), agent: t.defaultAgent ?? t.agents[0]?.id ?? '', target: t.current ?? 'new' })
+    const l = read(launch)
+    const agentOk = t.agents.some((a) => a.id === l.agent)
+    const targetOk = l.target === 'new' || t.workspaces.some((w) => w.id === l.target)
+    set(launch, {
+      ...l,
+      // Orca's default agent first; with none, the first one Orca would offer.
+      agent: agentOk ? l.agent : (t.defaultAgent ?? t.agents[0]?.id ?? ''),
+      target: targetOk ? l.target : (t.current ?? 'new')
+    })
   } catch {
     set(targets, { workspaces: [], agents: [] })
     set(launch, { ...read(launch), target: 'new' })
@@ -206,7 +220,8 @@ const isDoing = (b: Bead) => b.status === 'in_progress' || b.status === 'hooked'
 
 /** Current = the most recently touched in-progress bead; the rest split into todo / in progress / done. */
 export function group(beads: Bead[]) {
-  const doing = beads.filter(isDoing).sort(byUpdatedDesc)
+  // An epic in progress is a container, never the task someone is doing.
+  const doing = beads.filter((b) => isDoing(b) && b.issue_type !== 'epic').sort(byUpdatedDesc)
   return {
     current: doing[0] ?? null,
     inProgress: doing.slice(1),
@@ -217,15 +232,15 @@ export function group(beads: Bead[]) {
 
 export function setup(ctx: PanelContext): void {
   // workspace.changed also fires on subscribe, but loading now keeps the panel alive without it.
-  void refreshList()
-  const id = read(openId)
-  if (id) void loadDetail(id)
+  refresh()
   ctx.subscriptions.push(
+    // Another workspace brings back its own open bead and forms: reload what they show.
     on('workspace.changed', () => {
-      back()
-      void refreshList()
+      refresh()
+      if (read(form)?.kind === 'launch') void loadTargets()
     })
   )
+  if (read(form)?.kind === 'launch') void loadTargets()
   // Agents are what move beads around: reload when one changes state.
   ctx.subscriptions.push(on('agent.status.changed', refresh))
 }
@@ -248,7 +263,9 @@ function iconOf(b: { status: string }, ready: Set<string> | null) {
   return 'next'
 }
 
-const waiting = (b: Bead) => (b.waits_on?.length ? t().waitsOn(b.waits_on.join(', ')) : t().waiting)
+/** Blockers by title: an id says nothing at a glance. */
+const titleOf = (id: string) => read(list)?.beads.find((b) => b.id === id)?.title ?? id
+const waiting = (b: Bead) => (b.waits_on?.length ? t().waitsOn(b.waits_on.map(titleOf).join(', ')) : t().waiting)
 
 const meta = (b: Bead, blocked: boolean) =>
   [b.id, `P${b.priority}`, blocked ? waiting(b) : null, b.assignee].filter(Boolean).join(' · ')
@@ -447,6 +464,9 @@ function linkGroups(b: BeadDetail): [string, BeadLink[]][] {
 const when = (iso?: string) =>
   iso ? new Date(iso).toLocaleString(env.locale, { dateStyle: 'medium', timeStyle: 'short' }) : null
 
+/** Long text starts folded so links, comments and properties stay within reach. */
+const LONG = 600
+
 function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
   const b = answer?.bead
   const status = b && statusOf(b.status)
@@ -474,7 +494,8 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
             <Heading level={1}>{b.title}</Heading>
             <Row gap="xs" wrap>
               <Badge tone={status!.tone}>{status!.label}</Badge>
-              <Badge>{`P${b.priority}`}</Badge>
+              {/* P0 and P1 are the one fact that should jump out. */}
+              <Badge tone={b.priority === 0 ? 'danger' : b.priority === 1 ? 'warning' : 'neutral'}>{`P${b.priority}`}</Badge>
               {b.issue_type && <Badge>{t().types[b.issue_type] ?? b.issue_type}</Badge>}
               {(b.labels ?? []).map((l) => (
                 <Badge>{l}</Badge>
@@ -483,7 +504,7 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
           </Stack>
           <Actions b={b} />
           <Stack gap="sm">
-            <Collapsible title={t().description} defaultOpen>
+            <Collapsible title={t().description} defaultOpen={(b.description?.length ?? 0) < LONG}>
               {b.description ? (
                 <Markdown content={b.description} />
               ) : (
@@ -493,7 +514,7 @@ function DetailView({ id, answer }: { id: string; answer: ShowAnswer | null }) {
               )}
             </Collapsible>
             {texts.map(([title, text]) => (
-              <Collapsible title={title} defaultOpen>
+              <Collapsible title={title} defaultOpen={text.length < LONG}>
                 <Markdown content={text} />
               </Collapsible>
             ))}
@@ -888,7 +909,7 @@ export default function Panel() {
       ) : f?.kind === 'launch' ? (
         <LaunchView bead={f.bead} />
       ) : id ? (
-        <DetailView id={id} answer={read(detail)} />
+        <DetailView id={id} answer={read(detail)?.id === id ? read(detail)!.answer : null} />
       ) : answer === null ? (
         <Skeleton lines={6} label={t().loadingBeads} />
       ) : answer.problem ? (

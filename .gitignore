@@ -1,2 +1,4 @@
 node_modules/
 .orca/
+.beads/
+.impeccable/

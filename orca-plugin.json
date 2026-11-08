@@ -9,6 +9,7 @@
     "url": "https://github.com/maximechbt"
   },
   "repository": "https://github.com/maximechbt/beads-orca-ui",
+  "license": "MIT",
   "engines": {
     "orca": ">=1.4.248"
   },
