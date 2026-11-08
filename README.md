@@ -42,6 +42,12 @@ The panel follows the focused workspace and reloads when you switch workspaces, 
 
 Install **Beads** from Orca's plugin catalog. Orca asks you to approve the access listed below the first time.
 
+Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
+
+```
+https://github.com/maximechbt/beads-orca-ui#v0.1.0
+```
+
 You need:
 
 - Orca 1.4.248 or later;
