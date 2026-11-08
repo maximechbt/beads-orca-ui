@@ -1,0 +1,40 @@
+{
+  "manifestVersion": 2,
+  "id": "beads-orca-ui",
+  "name": "Beads",
+  "version": "0.1.0",
+  "description": "See and act on the beads tasks of your Orca workspace: the current task, ready work, epics, comments, and launching an agent on a task.",
+  "author": {
+    "name": "maximechbt",
+    "url": "https://github.com/maximechbt"
+  },
+  "repository": "https://github.com/maximechbt/beads-orca-ui",
+  "engines": {
+    "orca": ">=1.4.248"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "beads-ui",
+        "title": "Beads",
+        "icon": "layers",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "agent:read"
+    },
+    {
+      "kind": "agent:launch"
+    }
+  ]
+}
