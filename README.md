@@ -6,7 +6,7 @@
 
 <p align="center"><img src="docs/demo.gif" width="380" alt="The Beads panel: the ready list, epics, all tasks, a task's details, finishing it, launching an agent and creating a task."></p>
 
-<p align="center"><a href="https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community"><b>Open in Orca</b></a> · <a href="docs/demo.mp4">Watch the demo video</a></p>
+<p align="center"><a href="https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community"><b>Open in Orca</b></a> · <a href="https://github.com/maximechbt/beads-orca-ui/releases/download/v0.2.2/beads-for-orca-demo.mp4">Watch the demo video</a></p>
 
 <p align="center"><sub>A community plugin. Not affiliated with or endorsed by the beads project or by Orca.</sub></p>
 
@@ -47,7 +47,7 @@ Install **Beads for Orca** from Orca's plugin catalog ([open it in Orca](https:/
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v0.2.1
+https://github.com/maximechbt/beads-orca-ui#v0.2.2
 ```
 
 You need:

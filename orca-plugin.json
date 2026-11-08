@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "beads-orca-ui",
   "name": "Beads for Orca",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "See and act on the beads tasks of your Orca workspace: the current task, ready work, epics, comments, and launching an agent on a task.",
   "author": {
     "name": "maximechbt",
