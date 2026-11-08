@@ -1,8 +1,8 @@
 <p align="center"><img src="docs/icon.png" width="96" alt=""></p>
 
-<h1 align="center">Beads for Orca</h1>
+<h1 align="center">Beads Panel</h1>
 
-<p align="center">Your <a href="https://github.com/steveyegge/beads">beads</a> tasks in an <a href="https://www.onorca.dev">Orca</a> sidebar panel: see what is in progress and what is ready, then start it, finish it, or hand it to an agent.</p>
+<p align="center">A minimal <a href="https://www.onorca.dev">Orca</a> sidebar panel for your <a href="https://github.com/steveyegge/beads">beads</a> tasks: what is in progress, what is ready, and one press to hand a task to an agent.</p>
 
 <p align="center"><img src="docs/demo.gif" width="380" alt="The Beads panel: the ready list, epics, all tasks, a task's details, finishing it, launching an agent and creating a task."></p>
 
@@ -42,12 +42,12 @@ The panel follows the focused workspace and reloads when you switch workspaces, 
 
 ## Install
 
-Install **Beads for Orca** from Orca's plugin catalog ([open it in Orca](https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community)). Orca asks you to approve the access listed below the first time.
+Install **Beads Panel** from Orca's plugin catalog ([open it in Orca](https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community)). Orca asks you to approve the access listed below the first time.
 
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v0.2.2
+https://github.com/maximechbt/beads-orca-ui#v0.2.3
 ```
 
 You need:
