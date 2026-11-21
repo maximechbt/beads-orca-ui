@@ -2,8 +2,8 @@
   "manifestVersion": 2,
   "id": "beads-orca-ui",
   "name": "Beads Panel",
-  "version": "0.3.2",
-  "description": "A minimal beads panel for Orca: what's in progress, what's ready, and one press to hand a task to an agent.",
+  "version": "1.0.0",
+  "description": "Your beads tasks beside your agents: see what moves, change any task in place, and hand one to an agent in one press.",
   "author": {
     "name": "maximechbt",
     "url": "https://github.com/maximechbt"
@@ -11,21 +11,40 @@
   "repository": "https://github.com/maximechbt/beads-orca-ui",
   "license": "MIT",
   "icon": "docs/icon.png",
+  "cover": {
+    "path": "docs/cover.webp",
+    "alt": "Beads Panel for Orca: its logo and name beside two panels, the task list in light and a task's details in dark."
+  },
   "screenshots": [
     {
-      "path": "docs/screenshots/ready.png",
-      "caption": "The tasks in progress on top, then all tasks by state, what is ready, and each epic's progress.",
-      "alt": "Three Beads panels: the All tab by state, the Ready tab, and the Epics tab with progress bars."
+      "path": "docs/screenshots/list.webp",
+      "caption": "In progress on top, then what can start, what waits and what is done; epics with their progress.",
+      "alt": "Two Beads panels: the All tab grouped by state with To do unfolded, and the Epics tab in dark with an epic's tasks and progress bar."
     },
     {
-      "path": "docs/screenshots/task.png",
-      "caption": "A task: description first, the rest one press away. Finish it with a reason.",
-      "alt": "A task opened in the Beads panel, then with its criteria and comments unfolded, and the finish form asking for a reason."
+      "path": "docs/screenshots/task.webp",
+      "caption": "Every field is a menu: status, priority, assignee, type, parent, labels, dates and estimate.",
+      "alt": "A task in the Beads panel with its priority menu open, next to the same task in dark scrolled to its criteria, links and comments."
     },
     {
-      "path": "docs/screenshots/act.png",
-      "caption": "Start hands a task to an agent. Create a task without leaving Orca.",
-      "alt": "The launch form with agent, worktree and prompt; the new task form; the All tab in dark."
+      "path": "docs/screenshots/agent.webp",
+      "caption": "Start hands a task to Claude Code, Codex or any enabled agent, in this worktree or a new one.",
+      "alt": "The Start menu listing Claude Code and Codex, and the task in dark once Claude Code was launched on it."
+    },
+    {
+      "path": "docs/screenshots/finish.webp",
+      "caption": "Finish in one press, with a reason, or as a duplicate or replacement; link, block, defer or delete from the … menu.",
+      "alt": "The Finish menu on a waiting task, and the … menu in dark with dependency, field and delete entries."
+    },
+    {
+      "path": "docs/screenshots/memory.webp",
+      "caption": "The beads memory every agent gets when its session starts: read it, add to it, rewrite or forget a fact.",
+      "alt": "The Memory view listing four facts with a search field, and the same view in dark writing a new memory."
+    },
+    {
+      "path": "docs/screenshots/create.webp",
+      "caption": "Search by title or id; Enter on no match creates the task, with its labels, due date and estimate.",
+      "alt": "Search results for payment, and the new task form in dark with a title and labels filled in."
     }
   ],
   "engines": {
@@ -40,8 +59,7 @@
         "id": "beads-ui",
         "title": "Beads",
         "icon": "layers",
-        "entry": "src/panel.tsx",
-        "ui": "components"
+        "entry": "panel/index.html"
       }
     ]
   },
@@ -53,7 +71,7 @@
       "kind": "agent:read"
     },
     {
-      "kind": "agent:launch"
+      "kind": "storage:own"
     }
   ]
 }

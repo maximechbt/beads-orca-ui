@@ -38,6 +38,24 @@ test('turns each action into bd arguments that cannot read as flags', async () =
   assert.deepEqual(await args({ action: 'release' }), ['unclaim', '--force', '--', '-x'])
   assert.deepEqual(await args({ action: 'duplicate', other: 'y' }), ['duplicate', '--of=y', '--', '-x'])
   assert.deepEqual(await args({ action: 'supersede', other: 'y' }), ['supersede', '--with=y', '--', '-x'])
+  assert.deepEqual(await args({ action: 'status', value: 'deferred' }), ['update', '--status=deferred', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'status', value: 'closed' })), 'string')
+  assert.deepEqual(await args({ action: 'assign', value: ' Ada ' }), ['update', '--assignee=Ada', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'assign', value: ' ' })), 'string')
+  assert.deepEqual(await args({ action: 'parent', other: '' }), ['update', '--parent=', '--', '-x'])
+  assert.deepEqual(await args({ action: 'parent', other: 'e' }), ['update', '--parent=e', '--', '-x'])
+  assert.deepEqual(await args({ action: 'label-add', value: 'ui' }), ['update', '--add-label=ui', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'label-add', value: 'a,b' })), 'string')
+  assert.deepEqual(await args({ action: 'label-remove', value: 'ui' }), ['update', '--remove-label=ui', '--', '-x'])
+  assert.deepEqual(await args({ action: 'field', field: 'due', value: '+1d' }), ['update', '--due=+1d', '--', '-x'])
+  assert.deepEqual(await args({ action: 'field', field: 'defer', value: '' }), ['update', '--defer=', '--', '-x'])
+  assert.deepEqual(await args({ action: 'field', field: 'estimate', value: '' }), ['update', '--estimate=0', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'field', field: 'estimate', value: '2h' })), 'string')
+  assert.equal(typeof (await args({ action: 'field', field: 'title' as 'due', value: 'x' })), 'string')
+  assert.equal(typeof (await args({ action: 'field', field: 'due', value: 'a\nb' })), 'string')
+  assert.deepEqual(await args({ action: 'link', other: 'y' }), ['dep', 'add', '--type=related', '--', '-x', 'y'])
+  assert.deepEqual(await args({ action: 'unlink', other: 'y' }), ['dep', 'remove', '--', '-x', 'y'])
+  assert.deepEqual(await args({ action: 'delete' }), ['delete', '--force', '--', '-x'])
   assert.equal(typeof (await args({ action: 'supersede' })), 'string')
   assert.equal(typeof (await args({ action: 'rm -rf' } as never)), 'string')
 })
@@ -74,13 +92,14 @@ test('refuses bad input before running anything', async () => {
   await worker.deactivate()
 })
 
-test('launches the chosen agent in an existing worktree', async () => {
-  const host = mockHost({
-    results: { 'workspace.readContext': context, 'workspace.list': list, 'agent.launch': { terminalId: 't1' } }
-  })
+test("launches through Orca's CLI, which hands the prompt over once the agent is up", async () => {
+  assert.deepEqual(main.launchArgs('claude', 'Start task demo-1', '/w2'), [
+    'agent', 'launch', '--agent', 'claude', '--worktree', 'path:/w2', '--prompt', 'Start task demo-1', '--json'
+  ])
+  const host = mockHost({ results: { 'workspace.readContext': context, 'workspace.list': list } })
   const worker = await mountWorker(main, { host })
-  assert.deepEqual(await worker.request('beads.launch', { agent: 'codex', prompt: 'go', target: 'r::/w2' }), { ok: true, where: 'w2' })
-  assert.deepEqual(worker.refusals, [])
+  const refused = await worker.request('beads.launch', { agent: 'claude', prompt: '--help', target: 'r::/w2' })
+  assert.equal(refused.ok, false)
   await worker.deactivate()
 })
 
@@ -106,4 +125,13 @@ test('says what each bead still waits on, forgetting finished blockers', () => {
   assert.deepEqual(beads.find((b) => b.id === 't')?.waits_on, ['doing'])
   assert.equal(beads.find((b) => b.id === 'e')?.waits_on, undefined)
   assert.equal('dependencies' in beads[3], false)
+})
+
+test('stores and forgets memories with arguments that cannot read as flags', () => {
+  assert.deepEqual(main.memoryArgs({ action: 'remember', value: ' -run tests with -race ' }), ['remember', '--', '-run tests with -race'])
+  assert.deepEqual(main.memoryArgs({ action: 'remember', key: 'auth-jwt', value: 'JWT' }), ['remember', '--key=auth-jwt', '--', 'JWT'])
+  assert.deepEqual(main.memoryArgs({ action: 'forget', key: 'auth-jwt' }), ['forget', '--', 'auth-jwt'])
+  assert.equal(typeof main.memoryArgs({ action: 'remember', value: '  ' }), 'string')
+  assert.equal(typeof main.memoryArgs({ action: 'remember', key: '--all', value: 'x' }), 'string')
+  assert.equal(typeof main.memoryArgs({ action: 'forget' }), 'string')
 })

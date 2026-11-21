@@ -14,6 +14,9 @@ declare global {
     /** Ids of the unfinished beads this one waits on (its open `blocks` dependencies). */
     waits_on?: string[]
     assignee?: string
+    labels?: string[]
+    /** ISO date the task is due. */
+    due_at?: string
     updated_at: string
   }
 
@@ -31,9 +34,15 @@ declare global {
     design?: string
     acceptance_criteria?: string
     notes?: string
-    labels?: string[]
     created_at: string
+    created_by?: string
+    owner?: string
     closed_at?: string
+    /** Hidden from `bd ready` until then. */
+    defer_until?: string
+    estimated_minutes?: number
+    external_ref?: string
+    spec_id?: string
     close_reason?: string
     /** What this bead depends on: its parent, its blockers. */
     dependencies?: BeadLink[]
@@ -70,12 +79,25 @@ declare global {
       | 'release'
       | 'duplicate'
       | 'supersede'
+      | 'status'
+      | 'assign'
+      | 'parent'
+      | 'label-add'
+      | 'label-remove'
+      | 'field'
+      | 'link'
+      | 'unlink'
+      | 'delete'
     reason?: string
     /** The comment to add, in markdown. */
     text?: string
     priority?: number
-    /** The other bead: the blocker to add or remove, the canonical one, the replacement. */
+    /** The other bead: the blocker or related task to add or remove, the canonical one, the replacement, the new parent (empty: none). */
     other?: string
+    /** `status`: the new status. `assign`: who. `label-*`: the label. `field`: the value, empty to clear. */
+    value?: string
+    /** For `field`: which one. */
+    field?: 'due' | 'defer' | 'estimate' | 'external-ref' | 'spec-id'
     /** For `edit`: the fields to write; an empty string clears a text field. */
     fields?: { title?: string; type?: string; description?: string; acceptance?: string; design?: string; notes?: string }
   }
@@ -90,17 +112,29 @@ declare global {
 declare module 'orca' {
   interface PluginRequests {
     /** Every bead of the focused workspace, the ids `bd ready` lists, or why there are none. */
-    'beads.list': { output: { workspace: string | null; beads: Bead[]; ready: string[]; problem?: BeadsProblem; error?: string } }
+    'beads.list': {
+      /** `me`: who bd writes as, so the panel can show a claim or a comment as yours before bd answers. */
+      /** `since`: the version the panel holds; an unchanged list then comes back as `unchanged`, without its beads. */
+      input: { since?: string }
+      output: { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string; problem?: BeadsProblem; error?: string }
+    }
     /** One bead in full. */
     'beads.show': { input: { id: string }; output: { bead: BeadDetail | null; problem?: BeadsProblem; error?: string } }
     /** Claim, close, reopen, reprioritize or (un)assign a bead. */
     'beads.act': { input: BeadAction; output: ActResult }
     /** A new bead, optionally the child of `parent`. */
-    'beads.create': { input: { title: string; type: string; priority: number; parent?: string; description?: string }; output: ActResult & { id?: string } }
+    'beads.create': {
+      input: { title: string; type: string; priority: number; parent?: string; description?: string; labels?: string[]; due?: string; estimate?: number }
+      output: ActResult & { id?: string }
+    }
     /** Where and with what an agent can start: the repository's worktrees (focused first) and the enabled agents. */
     'beads.targets': {
       output: { current: string | null; workspaces: LaunchTarget[]; agents: { id: string; name: string }[]; defaultAgent: string | null }
     }
+    /** The workspace's beads memories (`bd memories`), the facts `bd prime` gives every agent, sorted by key. */
+    'beads.memories': { output: { memories: { key: string; value: string }[]; problem?: BeadsProblem; error?: string } }
+    /** Stores a memory (a new one, or an existing key updated in place) or forgets one. */
+    'beads.memory': { input: { action: 'remember' | 'forget'; key?: string; value?: string }; output: ActResult }
     /** Starts `agent` with `prompt` in worktree `target`, or in a new worktree `name` when target is "new". */
     'beads.launch': { input: { agent: string; prompt: string; target: string; name?: string }; output: ActResult & { where?: string } }
   }

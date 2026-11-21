@@ -22,7 +22,8 @@ One developer working in Orca with coding agents. They open the panel for all of
 
 ## Constraints
 
-- Platform: an Orca components panel (`ui: components`). Orca draws every component; no CSS, fonts or colors beyond its tones. Narrow right sidebar (~300–400 px).
+- Platform: an Orca HTML panel (`panel/index.html`), styled on Orca's theme variables and its light/dark class. Narrow right sidebar (~300–400 px).
+- Brand commitment (Nov 2026): the category standard, Linear-grade. Quality bar: Linear, the Linear Issues Orca plugin, Things 3.
 - English and French, following Orca's language.
 - Data comes only from `bd` through the plugin worker. beads has no "cancelled" status: closed is closed.
 - Nothing in the current layout is sacred; every current function must remain.

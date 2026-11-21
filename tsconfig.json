@@ -1,6 +1,7 @@
 {
   "extends": "./.orca/types/tsconfig.json",
   "include": [
-    "src"
+    "src",
+    "panel"
   ]
 }

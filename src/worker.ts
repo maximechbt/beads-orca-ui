@@ -1,8 +1,10 @@
 // Runs `bd` in the focused workspace's folder; panels cannot run processes, the worker can.
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { AGENTS, availableAgents } from './agents'
+import { STATUSES, TYPES } from './model'
 import './protocol'
 
 const run = promisify(execFile)
@@ -24,10 +26,21 @@ async function focused(orca: OrcaWorkerApi): Promise<{ ws: Workspace | null; all
   return { ws: sameBranch.find((w) => w.name === ctx.displayName) ?? sameBranch[0] ?? null, all: workspaces }
 }
 
+/** bd runs one at a time: two bd processes on one database slow each other down (measured: 1.0 s in parallel, 0.7 s in turn). */
+let bdTurn: Promise<unknown> = Promise.resolve()
+
 async function exec(cwd: string, file: string, args: string[]): Promise<string> {
-  const { stdout } = await run(file, args, { cwd, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 })
-  return stdout
+  const go = async () => (await run(file, args, { cwd, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 })).stdout
+  if (file !== 'bd') return go()
+  const turn = bdTurn.then(go, go)
+  bdTurn = turn.catch(() => {})
+  return turn
 }
+
+/** `bd ready` per workspace, kept while the list it was read with is unchanged; it costs a whole bd process. */
+const readyFor = new Map<string, { list: string; ready: string[]; at: number }>()
+// shortcut: re-read at least every 30 s, in case readiness moves with time alone (a deferral running out).
+const READY_TTL = 30_000
 
 const bd = async <T>(cwd: string, args: string[]): Promise<T> => JSON.parse(await exec(cwd, 'bd', [...args, '--json'])) as T
 
@@ -59,7 +72,7 @@ function problemOf(err: unknown): { problem: BeadsProblem; error: string } {
 const invalid = (error: string) => ({ ok: false, problem: 'failed' as const, error })
 const noWorkspace = { ok: false, problem: 'no-workspace' as const }
 
-const BEAD_KEYS: (keyof Bead)[] = ['id', 'title', 'status', 'priority', 'issue_type', 'assignee', 'parent', 'updated_at']
+const BEAD_KEYS: (keyof Bead)[] = ['id', 'title', 'status', 'priority', 'issue_type', 'assignee', 'parent', 'labels', 'due_at', 'updated_at']
 
 type ListRow = Bead & { dependencies?: { depends_on_id: string; type: string }[] }
 
@@ -75,8 +88,35 @@ export function toBeads(rows: ListRow[]): Bead[] {
 }
 const LINK_KEYS: (keyof BeadLink)[] = ['id', 'title', 'status', 'dependency_type']
 const COMMENT_KEYS: (keyof BeadComment)[] = ['id', 'author', 'text', 'created_at']
-export const TYPES = ['task', 'bug', 'feature', 'epic', 'chore']
+const FIELDS = { due: 'due', defer: 'defer', estimate: 'estimate', 'external-ref': 'external-ref', 'spec-id': 'spec-id' } as const
+/** A short free value: a name, a label, a date like `+1d` or `2026-12-01`, a reference. */
+const isValue = (v: unknown): v is string => typeof v === 'string' && v.length <= 500 && !/[\n\r]/.test(v)
 const isPriority = (p: unknown): p is number => Number.isInteger(p) && (p as number) >= 0 && (p as number) <= 4
+
+/**
+ * Orca's CLI arguments to start `agent` in the worktree at `path` with `prompt`. The CLI starts it the way a
+ * new agent tab does (chat or terminal, per the person's setting) and hands the prompt over once the agent is
+ * up: the host's `agent.launch` gives up on a slow-starting agent (Claude Code with plugins) and drops it.
+ */
+export const launchArgs = (agent: string, prompt: string, path: string) => [
+  'agent', 'launch', '--agent', agent, '--worktree', `path:${path}`, '--prompt', prompt, '--json'
+]
+
+/** bd's arguments to store or forget a memory; a string says why not. */
+export function memoryArgs(m: { action: string; key?: string; value?: string }): string[] | string {
+  const key = m.key?.trim() ?? ''
+  if (key && !/^[\w.:][\w.:-]{0,99}$/.test(key)) return 'A key is letters, digits, dots, dashes or colons.'
+  if (m.action === 'forget') return key ? ['forget', '--', key] : 'Which memory?'
+  if (m.action !== 'remember') return 'Unknown action.'
+  const value = m.value?.trim() ?? ''
+  if (!value || value.length > 20_000) return 'The memory is empty or too long.'
+  return ['remember', ...(key ? [`--key=${key}`] : []), '--', value]
+}
+
+/** Who bd writes as: BEADS_ACTOR, then git user.name, as bd itself picks. Empty when neither is set. */
+export async function actor(cwd: string): Promise<string> {
+  return process.env.BEADS_ACTOR || (await exec(cwd, 'git', ['config', 'user.name']).catch(() => '')).trim()
+}
 
 /**
  * bd's arguments for one action. `--flag=value` keeps a value that starts with "-" from reading as a flag,
@@ -94,8 +134,7 @@ export async function argsFor(cwd: string, a: BeadAction): Promise<string[] | st
     case 'priority':
       return isPriority(a.priority) ? ['update', `--priority=${a.priority}`, ...id] : 'Invalid priority.'
     case 'assign-me': {
-      // bd's own default actor: BEADS_ACTOR, then git user.name.
-      const me = process.env.BEADS_ACTOR || (await exec(cwd, 'git', ['config', 'user.name']).catch(() => '')).trim()
+      const me = await actor(cwd)
       return me ? ['update', `--assignee=${me}`, ...id] : 'No git user name set (git config user.name).'
     }
     case 'unassign':
@@ -128,21 +167,52 @@ export async function argsFor(cwd: string, a: BeadAction): Promise<string[] | st
     case 'supersede':
       if (!a.other || a.other === a.id) return 'Pick another task.'
       return [a.action, `--${a.action === 'duplicate' ? 'of' : 'with'}=${a.other}`, ...id]
+    case 'status':
+      return STATUSES.includes(a.value ?? '') ? ['update', `--status=${a.value}`, ...id] : 'Invalid status.'
+    case 'assign':
+      return isValue(a.value) && a.value.trim() ? ['update', `--assignee=${a.value.trim()}`, ...id] : 'Name someone.'
+    case 'parent':
+      if (a.other === a.id) return 'A task cannot be its own parent.'
+      return ['update', `--parent=${a.other ?? ''}`, ...id]
+    case 'label-add':
+    case 'label-remove':
+      if (!isValue(a.value) || !a.value.trim() || a.value.includes(',')) return 'Invalid label.'
+      return ['update', `--${a.action === 'label-add' ? 'add' : 'remove'}-label=${a.value.trim()}`, ...id]
+    case 'field': {
+      const flag = a.field && FIELDS[a.field]
+      if (!flag || !isValue(a.value ?? '')) return 'Invalid field.'
+      const v = (a.value ?? '').trim()
+      if (flag === 'estimate' && v && !/^\d{1,6}$/.test(v)) return 'The estimate is a number of minutes.'
+      return ['update', `--${flag}=${flag === 'estimate' && !v ? '0' : v}`, ...id]
+    }
+    case 'link':
+    case 'unlink':
+      if (!a.other || a.other === a.id) return 'Pick another task.'
+      return a.action === 'link' ? ['dep', 'add', '--type=related', '--', a.id, a.other] : ['dep', 'remove', '--', a.id, a.other]
+    case 'delete':
+      return ['delete', '--force', ...id]
     default:
       return 'Unknown action.'
   }
 }
 
 export default function activate(orca: OrcaWorkerApi): void {
-  orca.panels.handle('beads.list', async () => {
+  orca.panels.handle('beads.list', async (input) => {
     const { ws } = await focused(orca)
     if (!ws) return { workspace: null, beads: [], ready: [], problem: 'no-workspace' as const }
     try {
-      const [rows, ready] = await Promise.all([
-        bd<ListRow[]>(ws.path, ['list', '--all', '--flat', '--brief', '-n', '0']),
-        bd<Bead[]>(ws.path, ['ready', '--brief', '-n', '0'])
-      ])
-      return plain({ workspace: ws.path, beads: toBeads(rows), ready: ready.map((r) => r.id) })
+      const raw = await exec(ws.path, 'bd', ['list', '--all', '--flat', '--brief', '-n', '0', '--json'])
+      const known = readyFor.get(ws.path)
+      const ready =
+        known && known.list === raw && Date.now() - known.at < READY_TTL
+          ? known.ready
+          : (await bd<Bead[]>(ws.path, ['ready', '--brief', '-n', '0'])).map((r) => r.id)
+      if (ready !== known?.ready) readyFor.set(ws.path, { list: raw, ready, at: Date.now() })
+      // The panel already has this exact answer: say so instead of sending the whole list again.
+      const version = createHash('sha1').update(`${ws.path}\n${raw}\n${ready.join(',')}`).digest('hex').slice(0, 16)
+      const me = await actor(ws.path)
+      if (input?.since === version) return { workspace: ws.path, beads: [], ready: [], version, unchanged: true, me }
+      return plain({ workspace: ws.path, beads: toBeads(JSON.parse(raw) as ListRow[]), ready, version, me })
     } catch (err) {
       return { workspace: ws.path, beads: [], ready: [], ...problemOf(err) }
     }
@@ -176,17 +246,52 @@ export default function activate(orca: OrcaWorkerApi): void {
     }
   })
 
-  orca.panels.handle('beads.create', async ({ title, type, priority, parent, description }) => {
+  orca.panels.handle('beads.memories', async () => {
+    const { ws } = await focused(orca)
+    if (!ws) return { memories: [], problem: 'no-workspace' as const }
+    try {
+      const { schema_version: _, ...all } = await bd<Record<string, unknown>>(ws.path, ['memories'])
+      const memories = Object.entries(all)
+        .filter((e): e is [string, string] => typeof e[1] === 'string')
+        .map(([key, value]) => ({ key, value }))
+        .sort((a, b) => a.key.localeCompare(b.key))
+      return { memories }
+    } catch (err) {
+      return { memories: [], ...problemOf(err) }
+    }
+  })
+
+  orca.panels.handle('beads.memory', async (input) => {
+    const args = memoryArgs(input)
+    if (typeof args === 'string') return invalid(args)
+    const { ws } = await focused(orca)
+    if (!ws) return noWorkspace
+    try {
+      await exec(ws.path, 'bd', args)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, ...problemOf(err) }
+    }
+  })
+
+  orca.panels.handle('beads.create', async ({ title, type, priority, parent, description, labels, due, estimate }) => {
     if (!title.trim()) return invalid('The title is empty.')
     if (!TYPES.includes(type) || !isPriority(priority)) return invalid('Invalid type or priority.')
     if (description !== undefined && (typeof description !== 'string' || description.length > 20_000))
       return invalid('Invalid description.')
+    if (labels !== undefined && (!Array.isArray(labels) || !labels.every((l) => isValue(l) && l.trim() && !l.includes(','))))
+      return invalid('Invalid labels.')
+    if (due !== undefined && !isValue(due)) return invalid('Invalid due date.')
+    if (estimate !== undefined && !(Number.isInteger(estimate) && estimate >= 0 && estimate < 1e6)) return invalid('Invalid estimate.')
     const { ws } = await focused(orca)
     if (!ws) return noWorkspace
     try {
       const args = ['create', `--title=${title.trim()}`, `--type=${type}`, `--priority=${priority}`]
       if (parent) args.push(`--parent=${parent}`)
       if (description?.trim()) args.push(`--description=${description.trim()}`)
+      if (labels?.length) args.push(`--labels=${labels.map((l) => l.trim()).join(',')}`)
+      if (due?.trim()) args.push(`--due=${due.trim()}`)
+      if (estimate) args.push(`--estimate=${estimate}`)
       const created = await bd<{ id: string }>(ws.path, args)
       return { ok: true, id: created.id }
     } catch (err) {
@@ -203,7 +308,8 @@ export default function activate(orca: OrcaWorkerApi): void {
   })
 
   orca.panels.handle('beads.launch', async ({ agent, prompt, target, name }) => {
-    if (!prompt.trim()) return invalid('The prompt is empty.')
+    // A prompt starting with "-" would read as a flag to Orca's CLI.
+    if (!prompt.trim() || prompt.trimStart().startsWith('-')) return invalid('The prompt is empty or starts with "-".')
     if (!AGENTS.some((a) => a.id === agent)) return invalid('Unknown agent.')
     const { ws, all } = await focused(orca)
     if (!ws) return noWorkspace
@@ -211,7 +317,7 @@ export default function activate(orca: OrcaWorkerApi): void {
       if (target !== 'new') {
         const into = all.find((w) => w.id === target)
         if (!into) return invalid('That worktree no longer exists.')
-        await orca.host.call('agent.launch', { workspaceId: into.id, agent, prompt })
+        await exec(ws.path, ORCA_CLI, launchArgs(agent, prompt, into.path))
         return { ok: true, where: into.name }
       }
       const repo = await repoOf(ws.path)
@@ -225,7 +331,7 @@ export default function activate(orca: OrcaWorkerApi): void {
       ])
       return { ok: true, where: worktree }
     } catch (err) {
-      return { ok: false, problem: 'failed', error: ((err as { stderr?: string }).stderr || (err as Error).message).trim() }
+      return { ok: false, ...problemOf(err) }
     }
   })
 }

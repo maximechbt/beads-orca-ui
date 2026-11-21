@@ -2,11 +2,11 @@
 
 <h1 align="center">Beads Panel</h1>
 
-<p align="center">A minimal <a href="https://www.onorca.dev">Orca</a> sidebar panel for your <a href="https://github.com/steveyegge/beads">beads</a> tasks: what is in progress, what is ready, and one press to hand a task to an agent.</p>
+<p align="center">Your <a href="https://github.com/steveyegge/beads">beads</a> tasks beside your agents in <a href="https://www.onorca.dev">Orca</a>: see what moves, change any task in place, and hand one to an agent in one press.</p>
 
-<p align="center"><img src="docs/demo.gif" width="380" alt="The Beads panel: the ready list, epics, all tasks, a task's details, finishing it, launching an agent and creating a task."></p>
+<p align="center"><img src="docs/demo.gif" width="640" alt="The Beads panel: the Ready tab, a task whose priority is raised to critical, Claude Code launched on it, a search, and the beads memory."></p>
 
-<p align="center"><a href="https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community"><b>Open in Orca</b></a> · <a href="https://github.com/maximechbt/beads-orca-ui/releases/download/v0.2.2/beads-for-orca-demo.mp4">Watch the demo video</a></p>
+<p align="center"><a href="https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community"><b>Open in Orca</b></a> · <a href="https://github.com/maximechbt/beads-orca-ui/releases/download/v1.0.0/beads-panel-demo.mp4">Watch the demo video</a></p>
 
 <p align="center"><sub>A community plugin. Not affiliated with or endorsed by the beads project or by Orca.</sub></p>
 
@@ -16,31 +16,45 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 ## What it shows
 
-![Ready, Epics and All tabs](docs/screenshots/ready.png)
+![The All tab by state, and the Epics tab with progress](docs/screenshots/list.webp)
 
-- **In progress**, on top: every task someone is on, you or an agent, newest first. Epics are containers, never listed there.
-- **Search** above the tabs finds a task by title or id; Enter on no match creates it.
-- **All**, the default tab: Blocked, To do (open), In progress, Done. Each row shows its type (bug, feature, chore, epic, task); a blocked task names the task it waits on.
+- **One line per task**: priority bars, short id, a state glyph (ring, half-filled when moving, dashed when waiting, a check when done), the title and who holds it. A second line names the epic and what the task waits on.
+- **Search** above the tabs finds a task by title or id; Enter opens the first match, or creates the task when nothing matches.
+- **All**, the default tab: In progress, To do, Blocked, Done, each one folds. Bugs carry a red mark.
 - **Ready**: what `bd ready` lists, the open tasks with nothing blocking them.
 - **Epics**: each epic with a progress bar and its tasks, subtasks included, then the tasks with no epic.
 
 ## A task in full
 
-![A task's details, in light and dark, and finishing it](docs/screenshots/task.png)
+![A task with its priority menu open, and its links and comments in dark](docs/screenshots/task.webp)
 
-Press a task to see its description. Its acceptance criteria, design, notes, parent, blockers, subtasks, comments and properties sit in folded sections, one press away. Linked tasks open on a press; the × beside the title goes back.
+Press a task to see it: status, priority, assignee, type and epic on top, then its description, acceptance criteria, design and notes, subtasks, blockers, linked tasks and comments. The arrow at the top left (or Esc) goes back.
 
-From there you can start a task, which hands it to an agent, or finish it: done (with an optional reason), a duplicate of another task, or replaced by another. You can reopen a closed task, release a task an agent holds (a crashed agent's included), and edit a task's title, type, description, criteria, design and notes with the pencil beside its title. In **Blocked by**, the × beside a blocker removes it and **Add a blocker…** adds one. You can also change its priority, assign it to yourself or to nobody, comment in markdown, and add a subtask to an epic.
+Every property is a menu: status (open, in progress, blocked, deferred, pinned), priority, assignee (you, anyone already on a task, or a name you type), type (task, bug, feature, epic, chore, decision, spike, story, milestone), parent and labels. Due date, deferral, estimate, external reference and spec show once set; the **…** menu adds them. **Finish** closes a task in one press, or with a reason, or as a duplicate of another task or replaced by one. You can reopen a closed task, release a task an agent holds (a crashed agent's included), and edit a task's title, type, description, criteria, design and notes with the pencil. The **…** menu also copies the id, adds a blocker, makes another task wait on this one, links a related task, and deletes the task after a confirmation; the × beside a link removes it. You can also comment in markdown and add a subtask to an epic. A new task can take labels, a due date and an estimate.
+
+![The Finish menu, and the … menu with links, fields and delete](docs/screenshots/finish.webp)
 
 ## Act without leaving Orca
 
-![Launching an agent, creating a task, and the ready list in dark](docs/screenshots/act.png)
+![The Start menu, and a task once Claude Code was launched on it](docs/screenshots/agent.webp)
 
-- **Start** a task to launch an agent on it. Orca's default agent comes preselected, and you can pick any other installed, enabled agent. Run it in this worktree, in another worktree of the repository, or in a new one. The prompt (`Start task <id>`) can be edited first.
+![Search results, and the new task form](docs/screenshots/create.webp)
+
+- **Start** a task to launch an agent on it: pick an agent and it starts in this worktree with the prompt `Start task <id>`, Orca's default agent first. **New worktree…** and **Edit the prompt…** open the full form, where you can also pick another worktree of the repository.
 - **+** creates a task, an epic, or a subtask, with an optional description and epic. **Create and start** hands the new task to an agent right away.
 - Once an agent is launched on a task, the task says so until the agent claims it, and Start becomes **Start again**, so a second agent is never launched by accident.
 
-The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and on refresh. It opens on the last tasks it showed for the workspace, with a spinner while it reloads them. It speaks English and French, following Orca's language.
+Every change shows the moment you make it: the panel draws it at once and sends it to `bd`; if `bd` refuses, the panel puts things back as they were and says why.
+
+The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and when you press `r`. It opens on the last tasks it showed for the workspace, with a spinner while it reloads them. It follows Orca's light or dark theme and speaks English and French, following Orca's language.
+
+Keys: `/` searches, `m` opens the memory, `j` and `k` move through the list, Enter opens, Esc goes back, `n` creates a task, `r` reloads.
+
+## What your agents remember
+
+![The beads memory, and a new memory being written](docs/screenshots/memory.webp)
+
+The **brain** button beside **+** opens the workspace's beads memory: the facts `bd prime` gives every agent when it starts. Read them, search them, add one, rewrite or forget one.
 
 ## Install
 
@@ -49,7 +63,7 @@ Install **Beads Panel** from Orca's plugin catalog ([open it in Orca](https://on
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v0.3.0
+https://github.com/maximechbt/beads-orca-ui#v1.0.0
 ```
 
 You need:
@@ -61,22 +75,28 @@ You need:
 
 - **A worker** (`trusted-worker`): a Node process that runs `bd` in the workspace folder.
 - **Read the focused workspace** (`workspace:read`) and **hear agent status changes** (`agent:read`), to know where to run `bd` and when to reload.
-- **Start agents** (`agent:launch`), for **Start**.
+- **Its own storage** (`storage:own`), to keep each workspace's last tasks and open view, so the panel opens on them at once.
 
-A new worktree is made with Orca's own CLI (`orca worktree create`), because the plugin API cannot create one. To preselect an agent, the worker reads Orca's agent settings (`defaultTuiAgent`, `disabledTuiAgents`) and looks for agent CLIs on your login shell's PATH. It never writes to Orca's settings.
+**Start** goes through Orca's own CLI: `orca agent launch` in an existing worktree, `orca worktree create --agent` in a new one, because the plugin API cannot create a worktree and its `agent.launch` drops the prompt when an agent is slow to start. The agent opens the way a new agent tab does, as a chat or a terminal per your setting. To preselect an agent, the worker reads Orca's agent settings (`defaultTuiAgent`, `disabledTuiAgents`) and looks for agent CLIs on your login shell's PATH. It never writes to Orca's settings.
 
 ## Develop
 
 ```sh
 orca plugin test .        # unit tests
-orca plugin check .       # render every scenario
+orca plugin check .       # validate the manifest
 orca plugin dev load .    # load this folder into Orca (asks for approval)
 ./scripts/demo.sh         # fill this repository with demo tasks
 ```
 
 `scripts/demo.sh` rebuilds a demo beads database for this repository, the one the screenshots use. It refuses to touch a database whose prefix is not `demo`.
 
-The panel is `src/panel.tsx`, its words are in `src/i18n.ts`, and the worker is `src/worker.ts`.
+The panel is an HTML page, `panel/index.html` (layout and styles on Orca's theme variables), drawn with [Preact](https://preactjs.com) components written as [htm](https://github.com/developit/htm) tagged templates, so it runs with no build step. Both ship in one file, `panel/vendor/preact.js`, copied unchanged from htm 3.1.1 (`preact/standalone.module.js`): an Orca panel page cannot load scripts from a CDN, and Orca's JSX compiles for components panels only. Its script is split by job:
+
+- `panel/app.ts` wires the keyboard, the pointer and Orca's events, then starts the panel;
+- `panel/state.ts` holds the state and what survives a reload; `panel/data.ts` reads from and writes to bd through the worker (`panel/bridge.ts`); `panel/actions.ts` is what each press does;
+- `panel/render.ts` is the root `App` component: the header, the footer and the current view from `panel/views/` (the list, a task and its properties, the memory, the forms), with shared pieces in `panel/ui.ts`, `panel/menu.ts`, `panel/toast.ts` and `panel/dom.ts`.
+
+What it computes from bd's answers is in `src/model.ts`, its words in `src/i18n.ts`, and the worker is `src/worker.ts`.
 
 ## License
 
