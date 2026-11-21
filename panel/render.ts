@@ -2,19 +2,20 @@
 // touches what differs, so focus, carets and scroll stay where they are.
 import { byWorkOrder } from '../src/model.ts'
 import { ICON } from './glyphs.ts'
-import { back, newMemory, open, openCreate, openMemory } from './actions.ts'
-import { beads, lookups, readySet, search } from './data.ts'
+import { open, openBoard, openCreate, toggleMemory, newHere } from './actions.ts'
+import { beads, lookups, readySet, search, searchOlder } from './data.ts'
 import { glyph, html, valueOf } from './dom.ts'
 import { Menu } from './menu.ts'
-import { routeOf, save, state, t } from './state.ts'
+import { routeOf, save, state, t, WIDE } from './state.ts'
 import type { Route } from './state.ts'
 import { Toast } from './toast.ts'
-import { ago } from './ui.ts'
+import { ago, wsName } from './ui.ts'
 import { render as draw } from './vendor/preact.js'
 import { detailView } from './views/detail.ts'
 import { formView } from './views/forms.ts'
 import { listView, resetShown } from './views/list.ts'
 import { memoryView } from './views/memory.ts'
+import { WideHeader, wideView } from './views/wide.ts'
 
 type RenderOpts = { top?: boolean; focus?: string }
 
@@ -29,10 +30,12 @@ const VIEWS: Record<Route, () => unknown> = { list: listView, detail: detailView
 
 function App() {
   const route = routeOf()
+  // The big view has its own header and views; a task, a form or the memory takes the whole tab there too.
+  const body = WIDE && route === 'list' ? wideView() : VIEWS[route]()
   return html`
-    <${Header} route=${route} />
+    ${WIDE ? html`<${WideHeader} route=${route} onSearch=${onSearch} onSearchKey=${onSearchKey} />` : html`<${Header} route=${route} />`}
     <main>
-      <div id="view" class="scroll" style=${{ '--idw': `${lookups().idWidth}ch` }}>${VIEWS[route]()}</div>
+      <div id="view" class=${`scroll${WIDE && route !== 'list' ? ' page-view' : ''}`} style=${{ '--idw': `${lookups().idWidth}ch` }}>${body}</div>
       <div id="toast" aria-live="polite"><${Toast} /></div>
     </main>
     <${Footer} route=${route} />
@@ -49,7 +52,7 @@ function Header({ route }: { route: Route }) {
   return html`
     <header>
       <div class="bar">
-        <div class="brand"><b>Beads</b><span id="ws">${state.ws ? (state.ws.split('/').filter(Boolean).pop() ?? '') : ''}</span></div>
+        <div class="brand"><b>Beads</b><span id="ws">${wsName()}</span></div>
         <button
           class="ib"
           id="mem"
@@ -58,9 +61,10 @@ function Header({ route }: { route: Route }) {
           aria-label=${m.memory}
           aria-pressed=${String(onMemory)}
           title=${`${m.memoryHint} (m)`}
-          onClick=${() => (onMemory ? back() : openMemory())}
+          onClick=${toggleMemory}
           dangerouslySetInnerHTML=${{ __html: ICON.brain }}
         />
+        <button class="ib" type="button" hidden=${!ok} aria-label=${m.openBoard} title=${m.openBoard} onClick=${openBoard} dangerouslySetInnerHTML=${{ __html: ICON.expand }} />
         <button
           class="ib"
           id="new"
@@ -68,7 +72,7 @@ function Header({ route }: { route: Route }) {
           hidden=${route === 'form' || !ok}
           aria-label=${onMemory ? m.newMemory : m.newBead}
           title=${onMemory ? m.newMemory : `${m.newBead} (n)`}
-          onClick=${() => (onMemory ? newMemory() : openCreate(null))}
+          onClick=${newHere}
           dangerouslySetInnerHTML=${{ __html: ICON.add }}
         />
       </div>
@@ -85,6 +89,7 @@ function Header({ route }: { route: Route }) {
 function onSearch(e: Event) {
   resetShown()
   state.ui.query = valueOf(e)
+  searchOlder(state.ui.query)
   state.cursor = null
   render({ top: true })
   save()

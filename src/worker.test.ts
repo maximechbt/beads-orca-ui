@@ -30,7 +30,10 @@ test('turns each action into bd arguments that cannot read as flags', async () =
     'update', '--title=New', '--description=', '--', '-x'
   ])
   assert.equal(typeof (await args({ action: 'edit', fields: { title: ' ' } })), 'string')
-  assert.equal(typeof (await args({ action: 'edit', fields: { type: 'rm' } })), 'string')
+  // A workspace's own type goes through, bd refuses it if unknown; a flag or a system type never does.
+  assert.deepEqual(await args({ action: 'edit', fields: { type: 'incident' } }), ['update', '--type=incident', '--', '-x'])
+  for (const type of ['--all', 'event', 'gate', 'Rm'])
+    assert.equal(typeof (await args({ action: 'edit', fields: { type } })), 'string')
   assert.equal(typeof (await args({ action: 'edit', fields: {} })), 'string')
   assert.deepEqual(await args({ action: 'block', other: '-y' }), ['dep', 'add', '--', '-x', '-y'])
   assert.deepEqual(await args({ action: 'unblock', other: 'y' }), ['dep', 'remove', '--', '-x', 'y'])
@@ -40,6 +43,9 @@ test('turns each action into bd arguments that cannot read as flags', async () =
   assert.deepEqual(await args({ action: 'supersede', other: 'y' }), ['supersede', '--with=y', '--', '-x'])
   assert.deepEqual(await args({ action: 'status', value: 'deferred' }), ['update', '--status=deferred', '--', '-x'])
   assert.equal(typeof (await args({ action: 'status', value: 'closed' })), 'string')
+  assert.deepEqual(await args({ action: 'status', value: 'awaiting_review' }), ['update', '--status=awaiting_review', '--', '-x'])
+  assert.equal(typeof (await args({ action: 'status', value: '--all' })), 'string')
+  assert.equal(typeof (await args({ action: 'status', value: 'hooked' })), 'string')
   assert.deepEqual(await args({ action: 'assign', value: ' Ada ' }), ['update', '--assignee=Ada', '--', '-x'])
   assert.equal(typeof (await args({ action: 'assign', value: ' ' })), 'string')
   assert.deepEqual(await args({ action: 'parent', other: '' }), ['update', '--parent=', '--', '-x'])
@@ -134,4 +140,13 @@ test('stores and forgets memories with arguments that cannot read as flags', () 
   assert.equal(typeof main.memoryArgs({ action: 'remember', value: '  ' }), 'string')
   assert.equal(typeof main.memoryArgs({ action: 'remember', key: '--all', value: 'x' }), 'string')
   assert.equal(typeof main.memoryArgs({ action: 'forget' }), 'string')
+})
+
+test('a blocker closed before the loaded window waits on nothing', () => {
+  const row = (id: string, status: string, deps: string[] = []) => ({
+    id, title: id, status, priority: 2, updated_at: '2026',
+    dependencies: deps.map((depends_on_id) => ({ depends_on_id, type: 'blocks' }))
+  })
+  const [b] = main.toBeads([row('b', 'open', ['old-closed', 'live']), row('live', 'open')])
+  assert.deepEqual(b.waits_on, ['live'])
 })

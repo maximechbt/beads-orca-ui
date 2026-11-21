@@ -43,6 +43,8 @@ declare global {
     estimated_minutes?: number
     external_ref?: string
     spec_id?: string
+    /** Free key/values set with `bd update --set-metadata`. */
+    metadata?: Record<string, unknown>
     close_reason?: string
     /** What this bead depends on: its parent, its blockers. */
     dependencies?: BeadLink[]
@@ -105,6 +107,9 @@ declare global {
   /** What a write answers: ok, or why not. */
   type ActResult = { ok: boolean; problem?: BeadsProblem; error?: string }
 
+  /** A status a workspace adds with `bd config set status.custom`; its category says how it behaves. */
+  type CustomStatus = { name: string; category: 'active' | 'wip' | 'done' | 'frozen' }
+
   /** A worktree of the focused workspace's repository an agent can start in. */
   type LaunchTarget = { id: string; name: string; branch: string | null }
 }
@@ -115,8 +120,24 @@ declare module 'orca' {
     'beads.list': {
       /** `me`: who bd writes as, so the panel can show a claim or a comment as yours before bd answers. */
       /** `since`: the version the panel holds; an unchanged list then comes back as `unchanged`, without its beads. */
-      input: { since?: string }
-      output: { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string; problem?: BeadsProblem; error?: string }
+      /** `closedDays`: how far back closed tasks are loaded, 7 by default, 0 for all of them. */
+      input: { since?: string; closedDays?: number }
+      /** `closedTotal`: every closed task, loaded or not. `epics`: each epic's progress over all its children. */
+      output: {
+        workspace: string | null
+        beads: Bead[]
+        ready: string[]
+        version?: string
+        unchanged?: boolean
+        me?: string
+        statuses?: CustomStatus[]
+        types?: string[]
+        closedDays?: number
+        closedTotal?: number
+        epics?: Record<string, { done: number; total: number }>
+        problem?: BeadsProblem
+        error?: string
+      }
     }
     /** One bead in full. */
     'beads.show': { input: { id: string }; output: { bead: BeadDetail | null; problem?: BeadsProblem; error?: string } }
@@ -132,6 +153,10 @@ declare module 'orca' {
       output: { current: string | null; workspaces: LaunchTarget[]; agents: { id: string; name: string }[]; defaultAgent: string | null }
     }
     /** The workspace's beads memories (`bd memories`), the facts `bd prime` gives every agent, sorted by key. */
+    /** Opens the big view in the middle of Orca: the board editor on the workspace's `.beads-board` file. */
+    'beads.board': { output: ActResult }
+    /** Closed tasks older than the loaded window that match a search, so an old task is still found. */
+    'beads.searchClosed': { input: { q: string; before: string }; output: { beads: Bead[]; problem?: BeadsProblem; error?: string } }
     'beads.memories': { output: { memories: { key: string; value: string }[]; problem?: BeadsProblem; error?: string } }
     /** Stores a memory (a new one, or an existing key updated in place) or forgets one. */
     'beads.memory': { input: { action: 'remember' | 'forget'; key?: string; value?: string }; output: ActResult }

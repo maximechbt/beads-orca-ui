@@ -97,3 +97,49 @@ test('reads and writes estimates in minutes', () => {
   assert.equal(model.minutes(480), '8 h')
   assert.equal(model.minutes(45), '45 min')
 })
+
+test('puts each bead in the same group as sections does', () => {
+  const ready = new Set(['a', 'e'])
+  for (const [key, list] of model.sections(beads, ready)) for (const b of list) assert.equal(model.sectionOf(b, ready), key)
+})
+
+test('custom statuses fall where their category says', () => {
+  model.useCustomStatuses([
+    { name: 'awaiting_review', category: 'wip' },
+    { name: 'qa', category: 'active' },
+    { name: 'shipped', category: 'done' },
+    { name: 'parked', category: 'frozen' }
+  ])
+  const list = [bead('r', 'awaiting_review', '2026'), bead('q', 'qa', '2026'), bead('w', 'qa', '2026'), bead('s', 'shipped', '2026'), bead('p', 'parked', '2026')]
+  // Each custom status is its own group, beside its category's; one that waits stays in its group.
+  const groups = (workOrder: boolean) => model.sections(list, new Set(['q']), workOrder).map(([k, l]: [string, Bead[]]) => `${k}:${l.map((b) => b.id)}`)
+  assert.deepEqual(groups(false), ['doing:', 'awaiting_review:r', 'todo:', 'qa:q,w', 'blocked:', 'parked:p', 'shipped:s', 'done:'])
+  assert.deepEqual(groups(true).slice(0, 4), ['todo:', 'qa:q,w', 'doing:', 'awaiting_review:r'])
+  for (const b of list) assert.equal(model.sectionOf(b, new Set(['q'])), b.status)
+  assert.deepEqual(model.customStatuses(), ['awaiting_review', 'qa', 'shipped', 'parked'])
+  assert.ok(model.isCustom('qa') && !model.isCustom('open'))
+  model.useCustomStatuses([])
+  assert.equal(model.categoryOf('qa'), 'active')
+})
+
+
+test('custom types follow the built-in ones; states read from their labels', () => {
+  model.useCustomTypes(['incident', 'bug'])
+  assert.deepEqual(model.allTypes().slice(-2), ['milestone', 'incident'])
+  model.useCustomTypes([])
+  assert.equal(model.allTypes().length, model.TYPES.length)
+  assert.deepEqual(model.stateOf('health:failing'), ['health', 'failing'])
+  assert.equal(model.stateOf('frontend'), null)
+  assert.equal(model.stateOf(':x'), null)
+  assert.equal(model.stateOf('x:'), null)
+})
+
+test('loads closed tasks a week back, then a month, a quarter, all', () => {
+  const now = Date.parse('2026-11-21T12:00:00Z')
+  assert.equal(model.closedSince(7, now), '2026-11-14')
+  assert.equal(model.closedSince(0, now), null)
+  assert.equal(model.widerWindow(7), 30)
+  assert.equal(model.widerWindow(30), 90)
+  assert.equal(model.widerWindow(90), 0)
+  assert.equal(model.widerWindow(0), null)
+})

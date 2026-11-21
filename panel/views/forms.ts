@@ -1,5 +1,5 @@
 // The forms: a new task, editing one, and launching an agent on one.
-import { TYPES } from '../../src/model.ts'
+import { allTypes, isDone } from '../../src/model.ts'
 import { ICON } from '../glyphs.ts'
 import { back, submitCreate, submitEdit, submitLaunch } from '../actions.ts'
 import { beads, titleOf } from '../data.ts'
@@ -9,11 +9,11 @@ import { openMenu } from '../menu.ts'
 import { render } from '../render.ts'
 import { save, state, t } from '../state.ts'
 import type { Form } from '../state.ts'
-import { empty, topbar } from '../ui.ts'
+import { empty, topbar, typeLabel } from '../ui.ts'
 
 type Option = [value: string, label: string]
 
-const typeOptions = (): Option[] => TYPES.map((v) => [v, t().types[v]])
+const typeOptions = (): Option[] => allTypes().map((v) => [v, typeLabel(v)])
 
 const prioOptions = (): Option[] => t().priorities.map((label, i) => [String(i), label])
 
@@ -85,7 +85,7 @@ function createForm() {
   const m = t()
   const d = state.ui.draft
   // Open epics a new task can join; none to pick from means no picker.
-  const epics = beads().filter((b) => b.issue_type === 'epic' && b.status !== 'closed')
+  const epics = beads().filter((b) => b.issue_type === 'epic' && !isDone(b))
   const blocked = state.busy || !d.title.trim()
   return formShell(
     d.parent ? m.newSubtask : m.newBead,

@@ -53,6 +53,9 @@ export const ICON = {
   calendar: svg('<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/>'),
   // Lucide's brain (ISC licence), drawn on its 24-unit grid: scaled to the 12 px the other icons use, centred.
   brain: svg('<g transform="translate(0.8 0.8) scale(0.6)" stroke-width="2.2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375M6.003 5.125A3 3 0 0 0 6.401 6.5M3.477 10.896a4 4 0 0 1 .585-.396M19.938 10.5a4 4 0 0 1 .585.396M6 18a4 4 0 0 1-1.967-.516M19.967 17.484A4 4 0 0 1 18 18"/></g>'),
+  expand: svg('<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>'),
+  rows: svg('<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>'),
+  columns: svg('<rect x="2.5" y="2.5" width="3" height="11" rx="1"/><rect x="6.5" y="2.5" width="3" height="7" rx="1"/><rect x="10.5" y="2.5" width="3" height="9" rx="1"/>'),
   user: svg('<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5a4.5 4.5 0 0 1 9 0"/>')
 }
 

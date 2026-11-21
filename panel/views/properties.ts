@@ -1,5 +1,5 @@
 // A task's properties: each one a menu that writes to bd, and the fields set by typing.
-import { TYPES, STATUSES, byPriority, isDoing, minutes, parseMinutes } from '../../src/model.ts'
+import { allTypes, STATUSES, customStatuses, isDone, byPriority, isDoing, minutes, parseMinutes, stateOf } from '../../src/model.ts'
 import { ICON, PRIORITY, STATUS, TYPE_ICON } from '../glyphs.ts'
 import { startRelease } from '../actions.ts'
 import { act, beads, shortId } from '../data.ts'
@@ -9,7 +9,7 @@ import { isOpen, openMenu } from '../menu.ts'
 import type { MenuItem, MenuOpts } from '../menu.ts'
 import { state, t } from '../state.ts'
 import { copy, openLink } from '../toast.ts'
-import { avatar, prioGlyph, statusKind, statusLabel, swatch } from '../ui.ts'
+import { avatar, humanize, prioGlyph, statusKind, statusLabel, swatch, typeLabel } from '../ui.ts'
 import { finishMenu, startMenu } from './detail.ts'
 
 export type Field = 'due' | 'defer' | 'estimate' | 'external-ref' | 'spec-id'
@@ -38,7 +38,8 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
     closed
       ? [{ label: m.reopen, icon: ICON.refresh, run: () => act({ id: b.id, action: 'reopen' }, m.reopened) }]
       : ([
-          ...STATUSES.map((s) => {
+          // bd's own statuses, then the ones this workspace adds.
+          ...[...STATUSES, ...customStatuses()].map((s) => {
             const k = statusKind({ id: b.id, status: s }, null)
             // In progress by hand is a claim: it also makes the task yours, as `bd update --claim` does.
             const action: BeadAction = s === 'in_progress' ? { id: b.id, action: 'claim' } : { id: b.id, action: 'status', value: s }
@@ -64,15 +65,15 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
     ...people.map((p) => ({ label: p, run: () => act({ id: b.id, action: 'assign', value: p }, m.assigned) })),
     b.assignee ? { label: m.unassign, icon: ICON.close, run: () => act({ id: b.id, action: 'unassign' }, m.unassignedDone) } : null
   ] as (MenuItem | null)[]).filter((x) => x !== null)
-  const types = TYPES.map((ty) => ({
-    label: m.types[ty],
+  const types = allTypes().map((ty) => ({
+    label: typeLabel(ty),
     icon: TYPE_ICON[ty] ?? ICON.task,
     check: (b.issue_type ?? 'task') === ty,
     run: () => act({ id: b.id, action: 'edit', fields: { type: ty } }, m.saved)
   }))
   const parents: MenuItem[] = [
     ...beads()
-      .filter((o) => o.id !== b.id && o.status !== 'closed')
+      .filter((o) => o.id !== b.id && !isDone(o))
       .sort((x, y) => Number(y.issue_type === 'epic') - Number(x.issue_type === 'epic') || byPriority(x, y))
       .map((o) => ({ label: o.title, hint: shortId(o.id), icon: o.issue_type === 'epic' ? ICON.epic : undefined, check: parent?.id === o.id, run: () => act({ id: b.id, action: 'parent', other: o.id }, m.saved) })),
     ...(parent ? (['sep', { label: m.noParent, icon: ICON.close, run: () => act({ id: b.id, action: 'parent', other: '' }, m.saved) }] as MenuItem[]) : [])
@@ -95,11 +96,12 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
           html`<span class=${`t${b.assignee ? '' : ' muted'}`}>${b.assignee ?? m.nobody}</span>`
         )
       )}
-      ${prop(m.type, pv('p:type', types, {}, glyph(TYPE_ICON[b.issue_type ?? 'task'] ?? ICON.task, 'muted'), html`<span class="t">${m.types[b.issue_type ?? 'task'] ?? b.issue_type}</span>`))}
+      ${prop(m.type, pv('p:type', types, {}, glyph(TYPE_ICON[b.issue_type ?? 'task'] ?? ICON.task, 'muted'), html`<span class="t">${typeLabel(b.issue_type)}</span>`))}
       ${prop(
         m.parent,
         pv('p:parent', parents, { search: true }, parent ? swatch((epic ?? parent).id) : null, html`<span class=${`t${parent ? '' : ' muted'}`}>${parent?.title ?? m.noParentShort}</span>`)
       )}
+      ${states(b).map(([dim, value]) => prop(humanize(dim), html`<span class="pv"><span class="t">${value}</span></span>`))}
       ${prop(m.labels, labels(b))}
       ${b.due_at ? field('p:due', 'due', m.due, html`<span class=${`t${overdue ? ' late' : ''}`}>${date(b.due_at)}</span>`) : null}
       ${b.defer_until ? field('p:defer', 'defer', m.deferUntil, html`<span class="t">${date(b.defer_until)}</span>`) : null}
@@ -110,19 +112,24 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
   `
 }
 
+/** The task's states (`bd set-state`): health:failing reads Health: failing, as a property rather than a label. */
+const states = (b: Bead) => (b.labels ?? []).map(stateOf).filter((s) => s !== null)
+const plainLabels = (b: Bead) => (b.labels ?? []).filter((l) => !stateOf(l))
+
 /** The labels as chips with a ×, then a + that picks an existing label or makes one. */
 function labels(b: BeadDetail) {
   const m = t()
+  const own = plainLabels(b)
   return html`
     <span class="pv labels">
-      ${(b.labels ?? []).map(
+      ${own.map(
         (l) => html`<span key=${l} class="chip">
           <span class="t">${l}</span>
           <button class="x" type="button" aria-label=${m.removeLabel(l)} title=${m.removeLabel(l)} disabled=${state.busy} onClick=${() => act({ id: b.id, action: 'label-remove', value: l }, m.saved)} dangerouslySetInnerHTML=${{ __html: ICON.close }} />
         </span>`
       )}
       <button class="chip add" type="button" data-k="p:labels" aria-label=${m.addLabel} title=${m.addLabel} disabled=${state.busy} onClick=${(e: Event) => labelMenu(anchorOf(e), b)}>
-        ${glyph(ICON.add)}${b.labels?.length ? null : m.addLabel}
+        ${glyph(ICON.add)}${own.length ? null : m.addLabel}
       </button>
     </span>
   `
@@ -167,7 +174,7 @@ export function fieldOpts(b: BeadDetail, field: Field): MenuOpts {
 
 function labelMenu(anchor: HTMLElement, b: BeadDetail) {
   const m = t()
-  const known = [...new Set(beads().flatMap((o) => o.labels ?? []))].filter((l) => !b.labels?.includes(l)).sort()
+  const known = [...new Set(beads().flatMap(plainLabels))].filter((l) => !b.labels?.includes(l)).sort()
   const add = (l: string) => act({ id: b.id, action: 'label-add', value: l }, m.saved)
   openMenu(anchor, known.map((l) => ({ label: l, run: () => add(l) })), {
     placeholder: m.addLabel,

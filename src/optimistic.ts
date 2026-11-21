@@ -2,6 +2,7 @@
 // answers as they came and draws them with the writes still in flight laid on top, so a write that
 // fails simply stops being laid on.
 import type {} from './protocol.ts'
+import { categoryOf } from './model.ts'
 
 /** What a new task is made of, as the create form sends it. */
 export type NewTask = { title: string; type: string; priority: number; parent?: string; description?: string; labels?: string[]; due?: string; estimate?: number }
@@ -156,7 +157,7 @@ export function applyToList<L extends { beads: Bead[]; ready: string[] }>(list: 
   }
   // A touched task is ready when it is open and waits on nothing, as `bd ready` would say.
   const ready = new Set(list.ready)
-  for (const b of beads) if (touched.has(b.id)) (b.status === 'open' && !b.waits_on?.length ? ready.add(b.id) : ready.delete(b.id))
+  for (const b of beads) if (touched.has(b.id)) (categoryOf(b.status) === 'active' && !b.waits_on?.length ? ready.add(b.id) : ready.delete(b.id))
   for (const id of touched) if (!beads.some((b) => b.id === id)) ready.delete(id)
   return { ...list, beads, ready: [...ready] }
 }

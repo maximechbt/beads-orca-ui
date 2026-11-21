@@ -1,5 +1,5 @@
 // Reading from bd and writing to it, and what the views look up in the list it answered.
-import { queryWords, searchText, epicOf, commonPrefix } from '../src/model.ts'
+import { closedSince, queryWords, searchText, epicOf, commonPrefix, useCustomStatuses, useCustomTypes, widerWindow } from '../src/model.ts'
 import { applyToDetail, applyToList, isTemp, newDetail } from '../src/optimistic.ts'
 import type { Context, NewTask, Write } from '../src/optimistic.ts'
 import { request } from './bridge.ts'
@@ -12,7 +12,7 @@ async function refreshList() {
   try {
     // The version held lets the worker answer "unchanged" instead of sending every task again.
     const held = state.list && !state.list.problem ? state.list.version : undefined
-    const answer = await request('beads.list', held ? { since: held } : {})
+    const answer = await request('beads.list', { closedDays: state.ui.closedDays, ...(held ? { since: held } : {}) })
     const switched = useWorkspace(answer.workspace ?? null)
     state.loadedAt = Date.now()
     // Same list: keep the same object, so nothing derived from it is computed again.
@@ -293,6 +293,9 @@ export function lookups() {
   let w = 2
   for (const b of all) w = Math.max(w, b.id.length - (p && b.id.startsWith(p) ? p.length : 0))
   derivedFor = list
+  // The workspace's own statuses come with its list: everything that reads a status needs them first.
+  useCustomStatuses(list?.statuses)
+  useCustomTypes(list?.types)
   derived = { byId: byIdMap, ready: new Set(list?.ready ?? []), prefix: p, idWidth: Math.min(w, 9), epics: new Map(), text: new Map() }
   return derived
 }
@@ -319,9 +322,40 @@ export function epicFor(b: Bead) {
 export function search(q: string) {
   const d = lookups()
   const words = queryWords(q)
-  return beads().filter((b) => {
+  const found = beads().filter((b) => {
     let text = d.text.get(b.id)
     if (text === undefined) d.text.set(b.id, (text = searchText(b)))
     return words.every((w) => text.includes(w))
   })
+  // Closed tasks older than the loaded window that bd found for this same query.
+  const older = state.olderHits?.q === q ? state.olderHits.beads.filter((b) => !d.byId.has(b.id)) : []
+  return older.length ? [...found, ...older] : found
+}
+
+let olderTimer: ReturnType<typeof setTimeout> | undefined
+/** Asks bd, once typing pauses, for closed tasks older than the loaded window that match `q`. */
+export function searchOlder(q: string) {
+  clearTimeout(olderTimer)
+  const since = closedSince(state.ui.closedDays)
+  if (!since || q.trim().length < 2) return void (state.olderHits = null)
+  olderTimer = setTimeout(async () => {
+    const answer = await request('beads.searchClosed', { q: q.trim(), before: since }).catch(() => ({ beads: [] as Bead[] }))
+    if (state.ui.query.trim() !== q.trim()) return // a later query won
+    state.olderHits = { q: q.trim(), beads: answer.beads }
+    render()
+  }, 250)
+}
+
+/** Loads the next, wider window of closed tasks: a month, a quarter, then all of them. */
+export function showOlderDone() {
+  const next = widerWindow(state.ui.closedDays)
+  if (next === null) return
+  state.ui.closedDays = next
+  save()
+  refresh()
+}
+
+/** An epic's progress over every child it ever had; the loaded list lacks the ones closed long ago. */
+export function epicProgress(id: string, done: number, total: number) {
+  return state.list?.epics?.[id] ?? { done, total }
 }

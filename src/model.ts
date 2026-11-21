@@ -9,7 +9,46 @@ export const TYPES = ['task', 'bug', 'feature', 'epic', 'chore', 'decision', 'sp
 export const STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'pinned']
 
 export const byPriority = (a: Bead, b: Bead) => a.priority - b.priority || a.id.localeCompare(b.id)
-export const isDoing = (b: { status: string }) => b.status === 'in_progress' || b.status === 'hooked'
+export type Category = 'active' | 'wip' | 'done' | 'frozen'
+
+/** bd's built-in statuses, by category, as `bd statuses` lists them. */
+const BUILT_IN: Record<string, Category> = { open: 'active', in_progress: 'wip', blocked: 'wip', hooked: 'wip', deferred: 'frozen', pinned: 'frozen', closed: 'done' }
+
+/** The statuses this workspace adds with `bd config set status.custom`. */
+let custom = new Map<string, Category>()
+
+/** Takes the workspace's custom statuses, as the worker read them from `bd statuses`. */
+export function useCustomStatuses(list: { name: string; category: string }[] = []) {
+  custom = new Map(list.filter((s) => !Object.hasOwn(BUILT_IN, s.name)).map((s) => [s.name, s.category as Category]))
+}
+
+/** The custom statuses a person can set, in the order bd lists them. */
+export const customStatuses = () => [...custom.keys()]
+
+export const isCustom = (status: string) => custom.has(status)
+
+/** The types this workspace adds with `bd config set types.custom`. */
+let customTypes: string[] = []
+export function useCustomTypes(list: string[] = []) {
+  customTypes = list.filter((ty) => !TYPES.includes(ty))
+}
+/** Every type a person can pick: bd's own, then the workspace's. */
+export const allTypes = () => [...TYPES, ...customTypes]
+
+/** `bd set-state` keeps a dimension's value as a `dimension:value` label: health:failing → ['health', 'failing']. */
+export function stateOf(label: string): [dimension: string, value: string] | null {
+  const m = /^([^:\s]+):(\S+)$/.exec(label)
+  return m ? [m[1], m[2]] : null
+}
+
+/** How a status behaves; one bd has not told us about reads as active, like open. */
+export const categoryOf = (status: string): Category => (Object.hasOwn(BUILT_IN, status) ? BUILT_IN[status] : (custom.get(status) ?? 'active'))
+
+/** Moving: in progress, hooked by an agent, or a custom work-in-progress status like a review. */
+export const isDoing = (b: { status: string }) => b.status !== 'blocked' && categoryOf(b.status) === 'wip'
+
+/** Finished: closed, or a custom done status like shipped. */
+export const isDone = (b: { status: string }) => categoryOf(b.status) === 'done'
 
 /** Current = the most recently touched in-progress bead; the rest split into todo / in progress / done. */
 export function group(beads: Bead[]) {
@@ -18,26 +57,42 @@ export function group(beads: Bead[]) {
   return {
     current: doing[0] ?? null,
     inProgress: doing.slice(1),
-    todo: beads.filter((b) => b.status !== 'closed' && !isDoing(b)).sort(byPriority),
-    done: beads.filter((b) => b.status === 'closed').sort(byUpdatedDesc)
+    todo: beads.filter((b) => !isDone(b) && !isDoing(b)).sort(byPriority),
+    done: beads.filter(isDone).sort(byUpdatedDesc)
   }
 }
 
-/** Waiting on something: bd says blocked, or it is open and `bd ready` leaves it out. */
-const isWaiting = (b: Bead, ready: Set<string>) => b.status === 'blocked' || (b.status === 'open' && !ready.has(b.id))
+/** Waiting on something: bd says blocked, or it is open (or a custom active status) and `bd ready` leaves it out. */
+const isWaiting = (b: Bead, ready: Set<string>) => b.status === 'blocked' || (categoryOf(b.status) === 'active' && !ready.has(b.id))
 
-/** The All tab's groups, in reading order: what moves, what can start, what waits, what is done. */
-type SectionKey = 'doing' | 'todo' | 'blocked' | 'done'
-export function sections(beads: Bead[], ready: Set<string>): [SectionKey, Bead[]][] {
-  const { todo, done } = group(beads)
-  return [
-    // Epics in progress included: All lists everything.
-    ['doing', beads.filter(isDoing).sort(byUpdatedDesc)],
-    ['todo', todo.filter((b) => !isWaiting(b, ready))],
-    ['blocked', todo.filter((b) => isWaiting(b, ready))],
-    ['done', done]
-  ]
+/** The All tab's groups: what moves, what can start, what waits, what is done, and one per custom status. */
+export type SectionKey = 'doing' | 'todo' | 'blocked' | 'done' | (string & {})
+
+const customsOf = (category: Category) => customStatuses().filter((s) => custom.get(s) === category)
+
+/**
+ * The groups in order, each custom status beside its category's: a review after In progress, QA after Todo,
+ * parked after Waiting, shipped before Done. `workOrder` puts Todo first, as the board reads left to right.
+ */
+export function sectionKeys(workOrder = false): SectionKey[] {
+  const doing = ['doing', ...customsOf('wip')]
+  const todo = ['todo', ...customsOf('active')]
+  return [...(workOrder ? [...todo, ...doing] : [...doing, ...todo]), 'blocked', ...customsOf('frozen'), ...customsOf('done'), 'done']
 }
+
+export function sections(beads: Bead[], ready: Set<string>, workOrder = false): [SectionKey, Bead[]][] {
+  const by = new Map(sectionKeys(workOrder).map((k): [SectionKey, Bead[]] => [k, []]))
+  // Epics in progress included: All lists everything.
+  for (const b of beads) by.get(sectionOf(b, ready))?.push(b)
+  // What moves and what is done, latest first; what is still to do, by priority.
+  const latestFirst = (k: SectionKey) => k === 'doing' || k === 'done' || (isCustom(k) && (categoryOf(k) === 'wip' || categoryOf(k) === 'done'))
+  for (const [k, list] of by) list.sort(latestFirst(k) ? byUpdatedDesc : byPriority)
+  return [...by]
+}
+
+/** The group `sections` puts one bead in: its own for a custom status. */
+export const sectionOf = (b: Bead, ready: Set<string>): SectionKey =>
+  isCustom(b.status) ? b.status : isDoing(b) ? 'doing' : isDone(b) ? 'done' : isWaiting(b, ready) ? 'blocked' : 'todo'
 
 /** A query as the lowercase words a match must all contain. */
 export const queryWords = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -47,7 +102,7 @@ export const searchText = (b: Bead) => `${b.title} ${b.id}`.toLowerCase()
 export const matches = (b: Bead, q: string) => queryWords(q).every((word) => searchText(b).includes(word))
 
 /** Work order: what is moving, then what is open by priority, then what is done. */
-const rank = (b: Bead) => (isDoing(b) ? 0 : b.status === 'closed' ? 2 : 1)
+const rank = (b: Bead) => (isDoing(b) ? 0 : isDone(b) ? 2 : 1)
 export const byWorkOrder = (a: Bead, b: Bead) => rank(a) - rank(b) || byPriority(a, b)
 
 /** The nearest epic above a bead, or null; a parent cycle must not loop forever. */
@@ -78,7 +133,7 @@ export function byEpic(beads: Bead[]) {
     .sort(byWorkOrder)
     .map((epic) => {
       const kids = (children.get(epic.id) ?? []).sort(byWorkOrder)
-      return { epic, children: kids, done: kids.filter((b) => b.status === 'closed').length }
+      return { epic, children: kids, done: kids.filter(isDone).length }
     })
   return { epics, loose: loose.sort(byWorkOrder) }
 }
@@ -126,3 +181,10 @@ export function parseMinutes(q: string): number | null {
   const total = Number(m[1] ?? 0) * 480 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)
   return total > 0 && total < 1e6 ? total : null
 }
+
+/** How far back closed tasks load: a week, then a month, a quarter, all (0). */
+export const CLOSED_WINDOWS = [7, 30, 90, 0]
+/** The day closed tasks are loaded from, `days` back; null loads them all. */
+export const closedSince = (days: number, now = Date.now()) => (days > 0 ? new Date(now - days * 86_400_000).toISOString().slice(0, 10) : null)
+/** The window after `days`: what "show older" loads next; null once everything shows. */
+export const widerWindow = (days: number) => (days === 0 ? null : (CLOSED_WINDOWS.find((d) => d === 0 || d > days) ?? 0))

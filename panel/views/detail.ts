@@ -1,5 +1,5 @@
 // One task: its properties as menus, its actions, its text, links and comments.
-import { isDoing, flat } from '../../src/model.ts'
+import { isDoing, isDone, flat } from '../../src/model.ts'
 import { isTemp } from '../../src/optimistic.ts'
 import { ICON } from '../glyphs.ts'
 import { markdown } from '../markdown.ts'
@@ -10,7 +10,7 @@ import type { Child } from '../dom.ts'
 import { isOpen, openMenu } from '../menu.ts'
 import type { MenuItem } from '../menu.ts'
 import { render } from '../render.ts'
-import { state, t } from '../state.ts'
+import { state, t, WIDE } from '../state.ts'
 import type { Ref } from '../state.ts'
 import { copy, openLink } from '../toast.ts'
 import { ago, avatar, detailSkeleton, problemState, section, statusGlyph, statusLabel, topbar, when } from '../ui.ts'
@@ -75,8 +75,25 @@ export function detailView() {
     [m.closedAt, when(b.closed_at)],
     [m.closeReason, b.close_reason],
     [m.createdBy, b.created_by],
-    [m.owner, b.owner]
+    [m.owner, b.owner],
+    // Free key/values from `bd update --set-metadata`, under their own keys.
+    ...Object.entries(b.metadata ?? {}).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
   ].filter(([, v]) => v)
+  const body = [
+    html`<div class="desc">${b.description ? markdown(flat(b.description), openLink) : html`<p class="empty-line">${m.noDescription}</p>`}</div>`,
+    html`${texts.map(([key, title, text, open]) => section(key, title, null, open, () => markdown(flat(text), openLink)))}
+        ${children.length
+          ? section('children', m.children, `${children.filter(isDone).length}/${children.length}`, true, () => children.map(linkRow))
+          : null}
+        ${blockers(b)}
+        ${
+          // The parent is a property; every other link can be undone from its row.
+          linkGroups(b)
+            .filter(([key]) => key !== 'parent')
+            .map(([key, label, links]) => section(key, label, links.length, true, () => links.map((l) => removableLink(b, key, l))))
+        }
+        ${comments(b)}`
+  ]
   return html`
     <div>
       ${topbar(
@@ -94,25 +111,31 @@ export function detailView() {
           dangerouslySetInnerHTML=${{ __html: ICON.more }}
         />`
       )}
-      <div class="doc">
+      ${WIDE ? taskPage(b, epic, body, facts) : html`<div class="doc">
         <h1>${b.title}</h1>
         ${properties(b, epic, readySet())}
         ${actions(b)}
-        <div class="desc">${b.description ? markdown(flat(b.description), openLink) : html`<p class="empty-line">${m.noDescription}</p>`}</div>
-        ${texts.map(([key, title, text, open]) => section(key, title, null, open, () => markdown(flat(text), openLink)))}
-        ${children.length
-          ? section('children', m.children, `${children.filter((l) => l.status === 'closed').length}/${children.length}`, true, () => children.map(linkRow))
-          : null}
-        ${blockers(b)}
-        ${
-          // The parent is a property; every other link can be undone from its row.
-          linkGroups(b)
-            .filter(([key]) => key !== 'parent')
-            .map(([key, label, links]) => section(key, label, links.length, true, () => links.map((l) => removableLink(b, key, l))))
-        }
-        ${comments(b)}
-        <dl class="facts">${facts.map(([k, v]) => html`<dt>${k}</dt><dd class="num">${v}</dd>`)}</dl>
-      </div>
+        ${body}
+        ${factList(facts)}
+      </div>`}
+    </div>
+  `
+}
+
+/** When the task was made and closed, and by whom. */
+const factList = (facts: (string | null | undefined)[][]) => html`<dl class="facts">${facts.map(([k, v]) => html`<dt>${k}</dt><dd class="num">${v}</dd>`)}</dl>`
+
+/** In the big view a task is a page: its text in a reading column, what describes it and the actions in a rail. */
+function taskPage(b: BeadDetail, epic: Bead | null, body: unknown, facts: (string | null | undefined)[][]) {
+  return html`
+    <div class="page">
+      <h1>${b.title}</h1>
+      <article class="page-main">${body}</article>
+      <aside class="page-rail">
+        ${actions(b)}
+        ${properties(b, epic, readySet())}
+        ${factList(facts)}
+      </aside>
     </div>
   `
 }
@@ -274,7 +297,7 @@ function moreItems(anchor: HTMLElement, b: BeadDetail): MenuItem[] {
   const m = t()
   const linked = new Set([...(b.dependencies ?? []), ...(b.dependents ?? [])].map((l) => l.id))
   const waitsOn = (b.dependencies ?? []).filter((l) => l.dependency_type === 'blocks')
-  const unfinished = beads().filter((o) => o.id !== b.id && o.status !== 'closed')
+  const unfinished = beads().filter((o) => o.id !== b.id && !isDone(o))
   const pick = (list: Bead[], run: (o: Bead) => unknown) => () =>
     openMenu(anchor, list.map((o) => ({ label: o.title, hint: shortId(o.id), run: () => run(o) })), { search: true })
   // Fields a task does not have yet; once set, each one is a property row with its own menu.

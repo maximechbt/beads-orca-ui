@@ -27,6 +27,16 @@ typography:
     fontWeight: 600
     lineHeight: 1.35
     letterSpacing: "-0.005em"
+  page-title:
+    fontFamily: "-apple-system, BlinkMacSystemFont, Inter, Segoe UI, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 600
+    lineHeight: 1.3
+  reading:
+    fontFamily: "-apple-system, BlinkMacSystemFont, Inter, Segoe UI, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.6
   section:
     fontFamily: "-apple-system, BlinkMacSystemFont, Inter, Segoe UI, system-ui, sans-serif"
     fontSize: "13px"
@@ -186,7 +196,7 @@ A neutral ground borrowed from the host, one cool indigo, and a small set of war
 **Character:** a single native UI face at small sizes, so the panel reads as part of Orca; hierarchy comes from weight (600 against 400) and from the subtle ink, not from size jumps.
 
 ### Hierarchy
-- **Title** (600, 16px, 1.35, -0.005em, balanced wrap): the task title at the top of the detail view. The only size above 13 px.
+- **Title** (600, 16px, 1.35, -0.005em, balanced wrap): the task title at the top of the detail view. In the panel, the only size above 13 px; the big view adds the page title (22 px) and reading body (14 px), see "The big view".
 - **Section** (600, 13px): sticky group headers, detail section headers, comment authors, epic titles.
 - **Body** (400, 13px, 1.45): task titles in rows, property values, descriptions, menu items, buttons (500).
 - **Label** (400, 12px, tabular figures): short ids, property names, breadcrumbs, meta lines, counts.
@@ -196,7 +206,7 @@ A neutral ground borrowed from the host, one cool indigo, and a small set of war
 ### Named Rules
 **The Tabular Rule.** Ids and counts set in tabular numerals; the id column is sized to the longest short id in `ch` (2 to 9) so titles align down the list.
 
-**The Weight Not Size Rule.** Emphasis is 600 weight or full ink against subtle ink. No uppercase labels, no tracking, no size above 16 px.
+**The Weight Not Size Rule.** Emphasis is 600 weight or full ink against subtle ink. No uppercase labels, no tracking, no size above 16 px in the panel; the big view's page title (22 px) is its one exception.
 
 ## Layout
 
@@ -205,6 +215,10 @@ A single column filling a 300 to 400 px sidebar: a fixed header (brand and works
 Rows are a five-column grid: 16 px priority, id at the measured `ch` width, 16 px status glyph, the flexible title, then the assignee avatar; column gap 8 px, padding 6px 12px, minimum 32 px. The meta line spans the title and avatar columns and drops chips first when space runs out.
 
 The detail view has a sticky 40 px top bar with breadcrumbs and a two-column property grid (92 px names, flexible values). Every view insets 12 px from the panel's edges, so the header, the list, a task and the forms share one left edge. Spacing runs on 2, 4, 6, 8, 12, 16 px, with 16 px between the blocks of a task (properties, actions, description). At 300 px nothing reflows: titles and chips truncate with ellipses.
+
+### The big view
+
+The board tab in Orca's middle (`panel/board.html`) shares every token and glyph with the panel and widens three things: one header row (Beads and workspace, the List / Board / Epics view tabs, a 260 px search, memory, a primary **New task**), a row of filter chips (dashed when unset, solid with the indigo tint when set, the count at the right), and full pages. Rows sit on one 38 px line with what places a task aligned right before its holder. Board columns are 8 px-radius bands of `--band` running the full height, from 196 px wide; cards are flat, hairline-bordered, accent-ringed when open. A task is a page: a 720 px reading column whose title is 22 px and body 14 px at 1.6, beside a 320 px property rail, stacked below 980 px. Forms and the memory read at 760 px, centred.
 
 ## Elevation & Depth
 
@@ -265,7 +279,7 @@ An epic header with a chevron, the epic glyph in its hue, a 600 title and a 3 px
 ### Do:
 - **Do** read every neutral from `--orca-*` or a `color-mix` of them, and switch on the `dark` class, never on a media query.
 - **Do** draw state and priority with the SVG glyph set in `panel/glyphs.ts`, coloured through `currentColor`.
-- **Do** keep rows at 32 px and 13 px type, ids and counts in tabular numerals.
+- **Do** keep panel rows at 32 px (38 px on one line in the big view) and 13 px type, ids and counts in tabular numerals.
 - **Do** put actions in menus on the task's own properties before reaching for a form.
 - **Do** keep indigo to selection, focus, primary action and done.
 

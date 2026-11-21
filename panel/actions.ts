@@ -9,6 +9,20 @@ import { save, state, t } from './state.ts'
 import type { Form, Ref } from './state.ts'
 import type { PluginRequestInput } from 'orca'
 
+/** The header's brain: opens the memory, or closes it when open. */
+export const toggleMemory = () => (state.ui.memory && !state.ui.form ? back() : openMemory())
+/** The header's +: a memory in the memory view, a task anywhere else. */
+export const newHere = () => (state.ui.memory && !state.ui.form ? newMemory() : openCreate(null))
+
+/** Opens the big view in the middle of Orca; the worker makes its file and asks Orca to open it. */
+export async function openBoard() {
+  const r = await request('beads.board').catch((err: Error) => ({ ok: false, problem: 'failed' as const, error: err.message }))
+  if (!r.ok) {
+    state.outcome = { problem: r.problem ?? 'failed', error: r.error }
+    render()
+  }
+}
+
 export function openMemory() {
   state.ui.memory = true
   state.memEdit = null

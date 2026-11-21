@@ -6,7 +6,7 @@ import { loadTargets, prefetch, refresh } from './data.ts'
 import { searchBox } from './dom.ts'
 import { closeMenu } from './menu.ts'
 import { render } from './render.ts'
-import { restore, routeOf, save, state } from './state.ts'
+import { restore, routeOf, save, state, WIDE } from './state.ts'
 
 const typing = (el: Element | null): el is HTMLElement =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
@@ -94,6 +94,10 @@ orca.on?.('agent.status.changed', refresh)
 setInterval(() => !state.reloading && render(), 30_000)
 
 async function start() {
+  if (WIDE) {
+    // An editor is expected to read its document; the board file is only its way into Orca's middle, empty.
+    orca.document?.get().catch(() => {})
+  }
   await restore()
   render()
   refresh()

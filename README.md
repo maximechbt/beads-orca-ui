@@ -1,8 +1,8 @@
 <p align="center"><img src="docs/icon.png" width="96" alt=""></p>
 
-<h1 align="center">Beads Panel</h1>
+<h1 align="center">Beads UI</h1>
 
-<p align="center">Your <a href="https://github.com/steveyegge/beads">beads</a> tasks beside your agents in <a href="https://www.onorca.dev">Orca</a>: see what moves, change any task in place, and hand one to an agent in one press.</p>
+<p align="center">Your <a href="https://github.com/steveyegge/beads">beads</a> tasks beside your agents in <a href="https://www.onorca.dev">Orca</a>, and full screen in its middle: see what moves, change any task in place, and hand one to an agent in one press.</p>
 
 <p align="center"><img src="docs/demo.gif" width="640" alt="The Beads panel: the Ready tab, a task whose priority is raised to critical, Claude Code launched on it, a search, and the beads memory."></p>
 
@@ -14,13 +14,29 @@
 
 beads keeps your project's tasks next to your code, and coding agents read and update them with `bd`. This panel puts the same tasks beside your terminals and agents in Orca, so you can see what to do next and act on it without typing `bd` commands.
 
+## Full screen (new in 2.0)
+
+![The big view: a board with one column per status](docs/screenshots/board.webp)
+
+The **expand** button opens Beads in the middle of Orca, with three views:
+
+- **Board**: one column per state, a column per custom status included. Drag a card to another column to start, hold, reopen or finish it.
+- **List**: one line per task, grouped by state, with the epic, the due date and who holds it.
+- **Epics**: each epic with its progress and its tasks.
+
+Filters on status, priority, assignee, label and epic, and a **Ready only** toggle, apply to all three. A task opens on its own page, its properties on the right; a form or the memory opens in the same window.
+
+![The list in dark, and a task on its own page](docs/screenshots/bigview.webp)
+
+Orca shows a plugin in its middle only as the editor of a file, so the plugin opens an empty `.beads-board` file at the workspace root and keeps it out of git through `.git/info/exclude`, which is never committed.
+
 ## What it shows
 
 ![The All tab by state, and the Epics tab with progress](docs/screenshots/list.webp)
 
 - **One line per task**: priority bars, short id, a state glyph (ring, half-filled when moving, dashed when waiting, a check when done), the title and who holds it. A second line names the epic and what the task waits on.
 - **Search** above the tabs finds a task by title or id; Enter opens the first match, or creates the task when nothing matches.
-- **All**, the default tab: In progress, To do, Blocked, Done, each one folds. Bugs carry a red mark.
+- **All**, the default tab: In progress, To do, Blocked, Done, each one folds, plus a group per custom status beside its category's. Done shows the tasks closed in the last 7 days; one press widens it to 30 or 90 days, or all, and the search finds older ones. Bugs carry a red mark.
 - **Ready**: what `bd ready` lists, the open tasks with nothing blocking them.
 - **Epics**: each epic with a progress bar and its tasks, subtasks included, then the tasks with no epic.
 
@@ -30,7 +46,7 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 Press a task to see it: status, priority, assignee, type and epic on top, then its description, acceptance criteria, design and notes, subtasks, blockers, linked tasks and comments. The arrow at the top left (or Esc) goes back.
 
-Every property is a menu: status (open, in progress, blocked, deferred, pinned), priority, assignee (you, anyone already on a task, or a name you type), type (task, bug, feature, epic, chore, decision, spike, story, milestone), parent and labels. Due date, deferral, estimate, external reference and spec show once set; the **…** menu adds them. **Finish** closes a task in one press, or with a reason, or as a duplicate of another task or replaced by one. You can reopen a closed task, release a task an agent holds (a crashed agent's included), and edit a task's title, type, description, criteria, design and notes with the pencil. The **…** menu also copies the id, adds a blocker, makes another task wait on this one, links a related task, and deletes the task after a confirmation; the × beside a link removes it. You can also comment in markdown and add a subtask to an epic. A new task can take labels, a due date and an estimate.
+Every property is a menu: status (open, in progress, blocked, deferred, pinned, and the workspace's custom statuses), priority, assignee (you, anyone already on a task, or a name you type), type (task, bug, feature, epic, chore, decision, spike, story, milestone, and the workspace's custom types), parent and labels. States set with `bd set-state` show as properties (Health: failing), and metadata set with `bd update --set-metadata` shows with the task's dates. Due date, deferral, estimate, external reference and spec show once set; the **…** menu adds them. **Finish** closes a task in one press, or with a reason, or as a duplicate of another task or replaced by one. You can reopen a closed task, release a task an agent holds (a crashed agent's included), and edit a task's title, type, description, criteria, design and notes with the pencil. The **…** menu also copies the id, adds a blocker, makes another task wait on this one, links a related task, and deletes the task after a confirmation; the × beside a link removes it. You can also comment in markdown and add a subtask to an epic. A new task can take labels, a due date and an estimate.
 
 ![The Finish menu, and the … menu with links, fields and delete](docs/screenshots/finish.webp)
 
@@ -58,12 +74,12 @@ The **brain** button beside **+** opens the workspace's beads memory: the facts 
 
 ## Install
 
-Install **Beads Panel** from Orca's plugin catalog ([open it in Orca](https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community)). Orca asks you to approve the access listed below the first time.
+Install **Beads UI** from Orca's plugin catalog ([open it in Orca](https://onorca.dev/plugins/maximechbt.beads-orca-ui?catalog=community)). Orca asks you to approve the access listed below the first time.
 
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v1.0.0
+https://github.com/maximechbt/beads-orca-ui#v2.0.0
 ```
 
 You need:
@@ -75,6 +91,7 @@ You need:
 
 - **A worker** (`trusted-worker`): a Node process that runs `bd` in the workspace folder.
 - **Read the focused workspace** (`workspace:read`) and **hear agent status changes** (`agent:read`), to know where to run `bd` and when to reload.
+- **Open files in Orca** (`workspace:write`), for the big view: it opens the `.beads-board` file in Orca's middle.
 - **Its own storage** (`storage:own`), to keep each workspace's last tasks and open view, so the panel opens on them at once.
 
 **Start** goes through Orca's own CLI: `orca agent launch` in an existing worktree, `orca worktree create --agent` in a new one, because the plugin API cannot create a worktree and its `agent.launch` drops the prompt when an agent is slow to start. The agent opens the way a new agent tab does, as a chat or a terminal per your setting. To preselect an agent, the worker reads Orca's agent settings (`defaultTuiAgent`, `disabledTuiAgents`) and looks for agent CLIs on your login shell's PATH. It never writes to Orca's settings.

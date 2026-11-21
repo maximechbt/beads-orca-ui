@@ -1,9 +1,9 @@
 {
   "manifestVersion": 2,
   "id": "beads-orca-ui",
-  "name": "Beads Panel",
-  "version": "1.0.1",
-  "description": "Your beads tasks beside your agents: see what moves, change any task in place, and hand one to an agent in one press.",
+  "name": "Beads UI",
+  "version": "2.0.0",
+  "description": "Your beads tasks beside your agents, and full screen in the middle of Orca: see what moves, change any task in place, and hand one to an agent in one press.",
   "author": {
     "name": "maximechbt",
     "url": "https://github.com/maximechbt"
@@ -13,9 +13,19 @@
   "icon": "docs/icon.png",
   "cover": {
     "path": "docs/cover.webp",
-    "alt": "Beads Panel for Orca: its logo and name beside two panels, the task list in light and a task's details in dark."
+    "alt": "Beads UI for Orca: its logo and name beside the full-screen board, with the side panel in dark in front of it."
   },
   "screenshots": [
+    {
+      "path": "docs/screenshots/board.webp",
+      "caption": "New in 2.0: the whole board full screen in the middle of Orca; drag a card to start, hold or finish it.",
+      "alt": "The full-screen board with To do, In progress, Awaiting review, Blocked and Done columns, and filters above them."
+    },
+    {
+      "path": "docs/screenshots/bigview.webp",
+      "caption": "The list one line per task with filters, and a task on its own page with its properties on the right.",
+      "alt": "The full-screen list in dark grouped by state, and a task page in light with its description, criteria and properties."
+    },
     {
       "path": "docs/screenshots/list.webp",
       "caption": "In progress on top, then what can start, what waits and what is done; epics with their progress.",
@@ -32,19 +42,9 @@
       "alt": "The Start menu listing Claude Code and Codex, and the task in dark once Claude Code was launched on it."
     },
     {
-      "path": "docs/screenshots/finish.webp",
-      "caption": "Finish in one press, with a reason, or as a duplicate or replacement; link, block, defer or delete from the … menu.",
-      "alt": "The Finish menu on a waiting task, and the … menu in dark with dependency, field and delete entries."
-    },
-    {
       "path": "docs/screenshots/memory.webp",
       "caption": "The beads memory every agent gets when its session starts: read it, add to it, rewrite or forget a fact.",
       "alt": "The Memory view listing four facts with a search field, and the same view in dark writing a new memory."
-    },
-    {
-      "path": "docs/screenshots/create.webp",
-      "caption": "Search by title or id; Enter on no match creates the task, with its labels, due date and estimate.",
-      "alt": "Search results for payment, and the new task form in dark with a title and labels filled in."
     }
   ],
   "engines": {
@@ -61,6 +61,17 @@
         "icon": "layers",
         "entry": "panel/index.html"
       }
+    ],
+    "customEditors": [
+      {
+        "id": "board",
+        "title": "Beads",
+        "filenames": [
+          ".beads-board"
+        ],
+        "entry": "panel/board.html",
+        "frame": "isolated"
+      }
     ]
   },
   "capabilities": [
@@ -72,6 +83,9 @@
     },
     {
       "kind": "storage:own"
+    },
+    {
+      "kind": "workspace:write"
     }
   ]
 }

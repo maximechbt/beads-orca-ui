@@ -9,7 +9,7 @@ export const t = () => messages(orca.locale || 'en')
 
 type Problem = { problem?: BeadsProblem; error?: string }
 
-export type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string } & Problem
+export type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string; statuses?: CustomStatus[]; types?: string[]; closedDays?: number; closedTotal?: number; epics?: Record<string, { done: number; total: number }> } & Problem
 
 export type ShowAnswer = { bead: BeadDetail | null } & Problem
 
@@ -34,7 +34,12 @@ const DEFAULT_UI = () => ({
   collapsed: {} as Record<string, boolean>,
   epicsOpen: {} as Record<string, boolean>,
   /** The memory view is open, over the list or a task. */
-  memory: false
+  memory: false,
+  /** The big view's view, and the filters narrowing it. */
+  view: 'board' as 'list' | 'board' | 'epics',
+  /** How many days of closed tasks load: 7, 30, 90, or 0 for all. */
+  closedDays: 7,
+  filters: {} as { status?: string; priority?: number; assignee?: string; label?: string; epic?: string; ready?: boolean }
 })
 
 type Ui = ReturnType<typeof DEFAULT_UI>
@@ -64,7 +69,9 @@ export const state = {
   /** The memory being written: `key` null for a new one. */
   memEdit: null as { key: string | null; value: string; newKey: string } | null,
   forgetting: null as string | null,
-  memQuery: ''
+  memQuery: '',
+  /** Closed tasks older than the loaded window that match the search, asked of bd. */
+  olderHits: null as { q: string; beads: Bead[] } | null
 }
 
 /** Which view the main area shows; a form covers the memory view, which covers a task or the list. */
@@ -73,7 +80,10 @@ export type Route = 'list' | 'detail' | 'form' | 'memory'
 export const routeOf = (): Route => (state.ui.form ? 'form' : state.ui.memory ? 'memory' : state.ui.openId ? 'detail' : 'list')
 
 // Each workspace keeps its own view and its last answers, so the panel opens on them at once.
-const CACHE_KEY = 'cache'
+/** In the middle of Orca: board.html, the editor's page, marks itself wide; panels and editors get the same API, so nothing else tells them apart. */
+export const WIDE = document.documentElement.dataset.layout === 'wide'
+// The big view keeps its own view (tab, open task) apart from the panel's.
+const CACHE_KEY = WIDE ? 'cache:board' : 'cache'
 
 type Saved = { ui: Ui; list: ListAnswer | null; loadedAt: number | null; detail: Detail | null }
 
