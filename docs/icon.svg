@@ -2,26 +2,26 @@
   <!-- Beads Panel: three tasks strung on one thread, in the panel's three states (done, in progress, next). -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" stop-color="#7b85e6"/>
-      <stop offset="1" stop-color="#4650bd"/>
+      <stop offset="0" stop-color="#34343c"/>
+      <stop offset="1" stop-color="#1b1b20"/>
     </linearGradient>
     <radialGradient id="sheen" cx="0.3" cy="0.12" r="0.85">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
       <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
     <filter id="drop" x="-30%" y="-30%" width="160%" height="170%">
-      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#14142e" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#0b0b10" flood-opacity="0.45"/>
     </filter>
     <clipPath id="half"><rect x="512" y="0" width="512" height="1024"/></clipPath>
   </defs>
   <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
   <rect width="1024" height="1024" rx="232" fill="url(#sheen)"/>
   <!-- The thread -->
-  <path d="M150 842 C 300 760, 330 640, 512 512 S 724 270, 874 182" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="26" stroke-linecap="round"/>
+  <path d="M150 842 C 300 760, 330 640, 512 512 S 724 270, 874 182" fill="none" stroke="#ffffff" stroke-opacity="0.30" stroke-width="26" stroke-linecap="round"/>
   <!-- Done: a full bead with a tick -->
   <g filter="url(#drop)">
     <circle cx="282" cy="742" r="128" fill="#ffffff"/>
-    <path d="M222 744 l42 42 l84 -92" fill="none" stroke="#4650bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M222 744 l42 42 l84 -92" fill="none" stroke="#1f1f25" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <!-- In progress: half filled, in the panel's amber -->
   <g filter="url(#drop)">
@@ -31,6 +31,6 @@
   </g>
   <!-- Next: an open ring -->
   <g filter="url(#drop)">
-    <circle cx="742" cy="282" r="114" fill="#5560c9" stroke="#ffffff" stroke-width="30"/>
+    <circle cx="742" cy="282" r="114" fill="#26262c" stroke="#ffffff" stroke-width="30"/>
   </g>
 </svg>
