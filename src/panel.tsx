@@ -39,11 +39,12 @@ type Problem = { problem?: BeadsProblem; error?: string }
 type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[] } & Problem
 type ShowAnswer = { bead: BeadDetail | null } & Problem
 
-const list = atom<ListAnswer | null>(null)
+// Cached per workspace: the last answer shows at once on open while setup() reloads it.
+const list = atom<ListAnswer | null>('list', null, { persist: 'workspace' })
 /** The bead open in the detail view, or null for the list; each workspace remembers its own. */
 const openId = atom<string | null>('openId', null, { persist: 'workspace' })
 /** The last answer for a bead, tagged with its id so another bead's answer never shows under this one. */
-const detail = atom<{ id: string; answer: ShowAnswer } | null>(null)
+const detail = atom<{ id: string; answer: ShowAnswer } | null>('detail', null, { persist: 'workspace' })
 // All is the default view; a new key so earlier saved choices do not override it.
 const tab = atom('filter', 'all', { persist: 'plugin' })
 
