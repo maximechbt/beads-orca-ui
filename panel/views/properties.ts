@@ -1,6 +1,6 @@
 // A task's properties: each one a menu that writes to bd, and the fields set by typing.
 import { allTypes, STATUSES, customStatuses, isDone, byPriority, isDoing, minutes, parseMinutes, stateOf } from '../../src/model.ts'
-import { ICON, PRIORITY, STATUS, TYPE_ICON } from '../glyphs.ts'
+import { ICON, PRIORITY, STATUS } from '../glyphs.ts'
 import { startRelease } from '../actions.ts'
 import { act, beads, shortId } from '../data.ts'
 import { anchorOf, glyph, html } from '../dom.ts'
@@ -9,7 +9,7 @@ import { isOpen, openMenu } from '../menu.ts'
 import type { MenuItem, MenuOpts } from '../menu.ts'
 import { state, t } from '../state.ts'
 import { copy, openLink } from '../toast.ts'
-import { avatar, humanize, prioGlyph, statusKind, statusLabel, swatch, typeLabel } from '../ui.ts'
+import { avatar, humanize, prioGlyph, statusKind, statusLabel, swatch, typeIcon, typeLabel } from '../ui.ts'
 import { finishMenu, startMenu } from './detail.ts'
 
 export type Field = 'due' | 'defer' | 'estimate' | 'external-ref' | 'spec-id'
@@ -67,7 +67,7 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
   ] as (MenuItem | null)[]).filter((x) => x !== null)
   const types = allTypes().map((ty) => ({
     label: typeLabel(ty),
-    icon: TYPE_ICON[ty] ?? ICON.task,
+    icon: typeIcon(ty),
     check: (b.issue_type ?? 'task') === ty,
     run: () => act({ id: b.id, action: 'edit', fields: { type: ty } }, m.saved)
   }))
@@ -96,7 +96,7 @@ export function properties(b: BeadDetail, epic: Bead | null, ready: Set<string>)
           html`<span class=${`t${b.assignee ? '' : ' muted'}`}>${b.assignee ?? m.nobody}</span>`
         )
       )}
-      ${prop(m.type, pv('p:type', types, {}, glyph(TYPE_ICON[b.issue_type ?? 'task'] ?? ICON.task, 'muted'), html`<span class="t">${typeLabel(b.issue_type)}</span>`))}
+      ${prop(m.type, pv('p:type', types, {}, glyph(typeIcon(b.issue_type), 'muted'), html`<span class="t">${typeLabel(b.issue_type)}</span>`))}
       ${prop(
         m.parent,
         pv('p:parent', parents, { search: true }, parent ? swatch((epic ?? parent).id) : null, html`<span class=${`t${parent ? '' : ' muted'}`}>${parent?.title ?? m.noParentShort}</span>`)

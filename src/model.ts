@@ -8,6 +8,9 @@ export const TYPES = ['task', 'bug', 'feature', 'epic', 'chore', 'decision', 'sp
 /** Statuses a person sets by hand; closing goes through close, duplicate or supersede. */
 export const STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'pinned']
 
+/** `o[k]` only when `o` has `k` itself: a status or type named constructor or __proto__ reads as unknown, not as JavaScript's own. */
+export const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.hasOwn(o, k) ? o[k] : undefined)
+
 export const byPriority = (a: Bead, b: Bead) => a.priority - b.priority || a.id.localeCompare(b.id)
 export type Category = 'active' | 'wip' | 'done' | 'frozen'
 

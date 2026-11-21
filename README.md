@@ -79,7 +79,7 @@ Install **Beads UI** from Orca's plugin catalog ([open it in Orca](https://onorc
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v2.0.0
+https://github.com/maximechbt/beads-orca-ui#v2.0.1
 ```
 
 You need:

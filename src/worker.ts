@@ -1,7 +1,8 @@
 // Runs `bd` in the focused workspace's folder; panels cannot run processes, the worker can.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { OrcaWorkerApi } from 'orca/worker'
@@ -122,6 +123,8 @@ const COMMENT_KEYS: (keyof BeadComment)[] = ['id', 'author', 'text', 'created_at
 const FIELDS = { due: 'due', defer: 'defer', estimate: 'estimate', 'external-ref': 'external-ref', 'spec-id': 'spec-id' } as const
 /** A short free value: a name, a label, a date like `+1d` or `2026-12-01`, a reference. */
 const isValue = (v: unknown): v is string => typeof v === 'string' && v.length <= 500 && !/[\n\r]/.test(v)
+/** A new worktree's name: letters, digits, dots, dashes, underscores and slashes, never a flag or a way out of the repository. */
+export const isWorktreeName = (n: string) => /^\w[\w./-]{0,99}$/.test(n) && !n.split('/').includes('..')
 const isPriority = (p: unknown): p is number => Number.isInteger(p) && (p as number) >= 0 && (p as number) <= 4
 
 /**
@@ -214,7 +217,7 @@ export async function argsFor(cwd: string, a: BeadAction): Promise<string[] | st
       if (!isValue(a.value) || !a.value.trim() || a.value.includes(',')) return 'Invalid label.'
       return ['update', `--${a.action === 'label-add' ? 'add' : 'remove'}-label=${a.value.trim()}`, ...id]
     case 'field': {
-      const flag = a.field && FIELDS[a.field]
+      const flag = a.field && Object.hasOwn(FIELDS, a.field) && FIELDS[a.field]
       if (!flag || !isValue(a.value ?? '')) return 'Invalid field.'
       const v = (a.value ?? '').trim()
       if (flag === 'estimate' && v && !/^\d{1,6}$/.test(v)) return 'The estimate is a number of minutes.'
@@ -237,7 +240,8 @@ export const BOARD_FILE = '.beads-board'
 /** Creates the board file once and keeps it out of git through the local, never committed `info/exclude`. */
 async function boardFile(root: string): Promise<string> {
   const file = join(root, BOARD_FILE)
-  await writeFile(file, '', { flag: 'a' })
+  // Never through a link: a repository could ship `.beads-board` pointing anywhere, and this would create that file.
+  await (await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW)).close()
   const ignored = await exec(root, 'git', ['check-ignore', '-q', '--', BOARD_FILE]).then(() => true, () => false)
   if (!ignored) {
     // In a worktree `.git` is a file: git names the shared exclude file itself.
@@ -434,7 +438,7 @@ export default function activate(orca: OrcaWorkerApi): void {
       const repo = await repoOf(ws.path)
       const worktree = name?.trim() ?? ''
       if (!repo) return invalid('This workspace is not a git repository: no worktree can be made from it.')
-      if (!worktree || worktree.startsWith('-')) return invalid('Invalid worktree name.')
+      if (!isWorktreeName(worktree)) return invalid('Invalid worktree name.')
       // The plugin API cannot create worktrees; Orca's own CLI can, and starts the agent there.
       await exec(ws.path, ORCA_CLI, [
         'worktree', 'create', '--name', worktree, '--repo', `id:${repo.id}`,

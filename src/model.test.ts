@@ -143,3 +143,8 @@ test('loads closed tasks a week back, then a month, a quarter, all', () => {
   assert.equal(model.widerWindow(90), 0)
   assert.equal(model.widerWindow(0), null)
 })
+
+test('own reads only what an object holds itself', () => {
+  assert.equal(model.own({ open: 'Open' }, 'open'), 'Open')
+  for (const k of ['constructor', 'toString', '__proto__']) assert.equal(model.own({ open: 'Open' }, k), undefined)
+})

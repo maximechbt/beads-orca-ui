@@ -1,5 +1,5 @@
 // Pieces every view shares: state glyphs, avatars, sections, empty and loading states.
-import { categoryOf, isDoing, isDone, initials, hue, widerWindow } from '../src/model.ts'
+import { categoryOf, isDoing, isDone, initials, hue, own, widerWindow } from '../src/model.ts'
 import type { SectionKey } from '../src/model.ts'
 import { ICON, PRIORITY, STATUS, TYPE_ICON } from './glyphs.ts'
 import { back } from './actions.ts'
@@ -13,9 +13,11 @@ import { copy } from './toast.ts'
 /** A name bd keeps made readable: awaiting_review → Awaiting review. */
 export const humanize = (s: string) => s.replace(/[_-]+/g, ' ').replace(/^./, (c) => c.toUpperCase())
 /** A status in words: Orca's language for bd's own, the name made readable for a custom one. */
-export const statusLabel = (s: string) => t().status[s] ?? humanize(s)
+export const statusLabel = (s: string) => own(t().status, s) ?? humanize(s)
 /** A type in words, the same way. */
-export const typeLabel = (ty = 'task') => t().types[ty] ?? humanize(ty)
+export const typeLabel = (ty = 'task') => own(t().types, ty) ?? humanize(ty)
+/** A type's icon; a custom type gets the task's. */
+export const typeIcon = (ty = 'task') => own(TYPE_ICON, ty) ?? ICON.task
 
 type StatusKind = keyof typeof STATUS
 
@@ -50,7 +52,7 @@ export const swatch = (id: string) => html`<span class="swatch" style=${`backgro
 /** Each state group's glyph: the list's headers, the board's columns, the filters, the epic counts. */
 export const GROUP_MARK = { doing: 'doing', todo: 'open', blocked: 'waiting', done: 'done' } as const
 /** A group's glyph: a custom status's group takes its category's. */
-const groupMark = (k: SectionKey) => GROUP_MARK[k as keyof typeof GROUP_MARK] ?? statusKind({ id: '', status: k }, null)
+const groupMark = (k: SectionKey) => own<StatusKind>(GROUP_MARK, k) ?? statusKind({ id: '', status: k }, null)
 export const groupGlyph = (k: SectionKey) => glyph(STATUS[groupMark(k)], `st ${groupMark(k)}`)
 export const groupIcon = (k: SectionKey) => ({ icon: STATUS[groupMark(k)], iconClass: `st ${groupMark(k)}` })
 export function groupNames(): Record<'doing' | 'todo' | 'blocked' | 'done', string> {
@@ -58,7 +60,7 @@ export function groupNames(): Record<'doing' | 'todo' | 'blocked' | 'done', stri
   return { doing: m.inProgress, todo: m.todo, blocked: m.blocked, done: m.done }
 }
 /** Any group's name, a custom status's included. */
-export const groupName = (k: SectionKey) => (groupNames() as Record<string, string>)[k] ?? statusLabel(k)
+export const groupName = (k: SectionKey) => own<string>(groupNames(), k) ?? statusLabel(k)
 
 /** "Nov 25", for due dates on rows and cards. */
 export const shortDate = (iso: string) => new Date(iso).toLocaleDateString(orca.locale || 'en', { day: 'numeric', month: 'short' })

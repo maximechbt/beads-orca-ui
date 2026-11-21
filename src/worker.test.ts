@@ -150,3 +150,10 @@ test('a blocker closed before the loaded window waits on nothing', () => {
   const [b] = main.toBeads([row('b', 'open', ['old-closed', 'live']), row('live', 'open')])
   assert.deepEqual(b.waits_on, ['live'])
 })
+
+test('refuses names that would read as a flag, leave the repository or reach JavaScript internals', async () => {
+  for (const n of ['fix-footer', 'feat/board', 'v2.0'] ) assert.ok(main.isWorktreeName(n), n)
+  for (const n of ['', '-x', '../x', 'a/../b', '.hidden', 'a b']) assert.ok(!main.isWorktreeName(n), n)
+  const field = await main.argsFor('.', { id: 'x', action: 'field', field: 'constructor', value: '1' } as unknown as BeadAction)
+  assert.equal(typeof field, 'string')
+})
