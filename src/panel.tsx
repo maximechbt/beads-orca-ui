@@ -25,6 +25,7 @@ import {
   Select,
   set,
   Skeleton,
+  Spinner,
   Stack,
   Tab,
   Tabs,
@@ -79,6 +80,8 @@ const query = atom('query', '', { persist: 'workspace' })
 /** Orca's Select refuses an empty value, so "none picked" has its own. */
 const NONE = 'none'
 const busy = atom(false)
+/** Reloads in flight: a count, so an early one finishing does not hide the spinner of a later one. */
+const reloading = atom(0)
 /** What the last write said: a success line, or why it failed. */
 const outcome = atom<({ notice?: string } & Problem) | null>(null)
 
@@ -265,9 +268,9 @@ async function submitLaunch(): Promise<void> {
 }
 
 function refresh(): void {
-  void refreshList()
   const id = read(openId)
-  if (id) void loadDetail(id)
+  set(reloading, read(reloading) + 1)
+  void Promise.all([refreshList(), id ? loadDetail(id) : null]).finally(() => set(reloading, read(reloading) - 1))
 }
 
 const byUpdatedDesc = (a: Bead, b: Bead) => b.updated_at.localeCompare(a.updated_at)
@@ -1261,7 +1264,11 @@ export default function Panel() {
           {!f && answer && !answer.problem && (
             <IconButton icon="add" label={t().newBead} variant="ghost" onPress={() => openCreate(null)} />
           )}
-          <IconButton icon="refresh" label={t().refresh} variant="ghost" onPress={refresh} />
+          {read(reloading) > 0 ? (
+            <Spinner label={t().loadingBeads} labelHidden />
+          ) : (
+            <IconButton icon="refresh" label={t().refresh} variant="ghost" onPress={refresh} />
+          )}
         </Row>
       </Row>
       {f?.kind === 'create' ? (

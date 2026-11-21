@@ -40,7 +40,7 @@ From there you can start a task, which hands it to an agent, or finish it: done 
 - **+** creates a task, an epic, or a subtask, with an optional description and epic. **Create and start** hands the new task to an agent right away.
 - Once an agent is launched on a task, the task says so until the agent claims it, and Start becomes **Start again**, so a second agent is never launched by accident.
 
-The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and on refresh. It opens on the last tasks it showed for the workspace while it reloads them. It speaks English and French, following Orca's language.
+The panel follows the focused workspace and reloads when you switch workspaces, when an agent changes state, and on refresh. It opens on the last tasks it showed for the workspace, with a spinner while it reloads them. It speaks English and French, following Orca's language.
 
 ## Install
 
