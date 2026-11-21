@@ -2,7 +2,7 @@
 // touches what differs, so focus, carets and scroll stay where they are.
 import { byWorkOrder } from '../src/model.ts'
 import { ICON } from './glyphs.ts'
-import { open, openBoard, openCreate, toggleMemory, newHere } from './actions.ts'
+import { open, openBoard, openCreate, sync, toggleMemory, newHere } from './actions.ts'
 import { beads, lookups, readySet, search, searchOlder } from './data.ts'
 import { glyph, html, valueOf } from './dom.ts'
 import { Menu } from './menu.ts'
@@ -64,6 +64,7 @@ function Header({ route }: { route: Route }) {
           onClick=${toggleMemory}
           dangerouslySetInnerHTML=${{ __html: ICON.brain }}
         />
+        <${SyncButton} />
         <button class="ib" type="button" hidden=${!ok} aria-label=${m.openBoard} title=${m.openBoard} onClick=${openBoard} dangerouslySetInnerHTML=${{ __html: ICON.expand }} />
         <button
           class="ib"
@@ -84,6 +85,23 @@ function Header({ route }: { route: Route }) {
       <${Tabs} hidden=${route !== 'list' || !usable || Boolean(state.ui.query.trim())} />
     </header>
   `
+}
+
+const upTo99 = (n: number) => (n > 99 ? '99+' : String(n))
+
+/** Shown when the database has a Dolt remote: ↑ what it has to send (a count when known), ↓ what it has to receive. */
+export function SyncButton() {
+  const m = t()
+  const l = state.list
+  if (!l?.remote || l.problem) return null
+  const send = l.unpushed ? (l.ahead ?? null) : 0
+  const receive = l.behind ?? 0
+  const label = state.syncing ? m.syncing : [m.sync, ...(send !== 0 ? [m.toSend(send)] : []), ...(receive ? [m.toReceive(receive)] : [])].join(' · ')
+  return html`<button class="ib sync" type="button" aria-label=${label} title=${label} aria-busy=${String(state.syncing)} disabled=${state.syncing} onClick=${sync}>
+    ${glyph(ICON.sync, state.syncing ? 'spin' : undefined)}
+    ${send !== 0 ? html`<span class="num" aria-hidden="true">↑${send === null ? '' : upTo99(send)}</span>` : null}
+    ${receive ? html`<span class="num" aria-hidden="true">↓${upTo99(receive)}</span>` : null}
+  </button>`
 }
 
 function onSearch(e: Event) {

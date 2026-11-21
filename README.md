@@ -59,6 +59,7 @@ Every property is a menu: status (open, in progress, blocked, deferred, pinned, 
 - **Start** a task to launch an agent on it: pick an agent and it starts in this worktree with the prompt `Start task <id>`, Orca's default agent first. **New worktree…** and **Edit the prompt…** open the full form, where you can also pick another worktree of the repository.
 - **+** creates a task, an epic, or a subtask, with an optional description and epic. **Create and start** hands the new task to an agent right away.
 - Once an agent is launched on a task, the task says so until the agent claims it, and Start becomes **Start again**, so a second agent is never launched by accident.
+- **Sync**, in the header when the database has a Dolt remote, runs `bd sync`: it pulls the remote's commits, stops on a conflict, then pushes yours. It shows ↑ the commits to send and ↓ those to receive. The count to send needs the `dolt` CLI; without it, ↑ shows alone. The count to receive comes from a fetch, which takes a few seconds and holds the database meanwhile: the panel fetches at most every 10 minutes on its own, and when you press `r`.
 
 Every change shows the moment you make it: the panel draws it at once and sends it to `bd`; if `bd` refuses, the panel puts things back as they were and says why.
 

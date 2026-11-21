@@ -121,7 +121,8 @@ declare module 'orca' {
       /** `me`: who bd writes as, so the panel can show a claim or a comment as yours before bd answers. */
       /** `since`: the version the panel holds; an unchanged list then comes back as `unchanged`, without its beads. */
       /** `closedDays`: how far back closed tasks are loaded, 7 by default, 0 for all of them. */
-      input: { since?: string; closedDays?: number }
+      /** `fetch`: look at the remote now (seconds on the network) instead of at most every 10 minutes. */
+      input: { since?: string; closedDays?: number; fetch?: boolean }
       /** `closedTotal`: every closed task, loaded or not. `epics`: each epic's progress over all its children. */
       output: {
         workspace: string | null
@@ -137,10 +138,20 @@ declare module 'orca' {
         closedDays?: number
         closedTotal?: number
         epics?: Record<string, { done: number; total: number }>
+        /** The database has a Dolt remote to sync with. */
+        remote?: boolean
+        /** It has commits not sent to the remote since the last push or sync this machine knows of. */
+        unpushed?: boolean
+        /** How many commits those are, when the `dolt` CLI can count them. */
+        ahead?: number
+        /** How many of the remote's commits it lacks, as of the last look at the remote; unknown until one succeeds. */
+        behind?: number
         problem?: BeadsProblem
         error?: string
       }
     }
+    /** The focused workspace's folder, without running bd: on a switch, the panel shows what it kept for it at once. */
+    'beads.workspace': { output: { workspace: string | null } }
     /** One bead in full. */
     'beads.show': { input: { id: string }; output: { bead: BeadDetail | null; problem?: BeadsProblem; error?: string } }
     /** Claim, close, reopen, reprioritize or (un)assign a bead. */
@@ -157,6 +168,8 @@ declare module 'orca' {
     /** The workspace's beads memories (`bd memories`), the facts `bd prime` gives every agent, sorted by key. */
     /** Opens the big view in the middle of Orca: the board editor on the workspace's `.beads-board` file. */
     'beads.board': { output: ActResult }
+    /** Pulls the remote's Dolt commits, checks for conflicts, pushes this database's (`bd sync`). */
+    'beads.sync': { output: ActResult }
     /** Closed tasks older than the loaded window that match a search, so an old task is still found. */
     'beads.searchClosed': { input: { q: string; before: string }; output: { beads: Bead[]; problem?: BeadsProblem; error?: string } }
     'beads.memories': { output: { memories: { key: string; value: string }[]; problem?: BeadsProblem; error?: string } }

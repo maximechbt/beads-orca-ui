@@ -12,7 +12,12 @@ async function refreshList() {
   try {
     // The version held lets the worker answer "unchanged" instead of sending every task again.
     const held = state.list && !state.list.problem ? state.list.version : undefined
-    const answer = await request('beads.list', { closedDays: state.ui.closedDays, ...(held ? { since: held } : {}) })
+    const fetch = fetchNext
+    fetchNext = false
+    const asked = switches
+    const answer = await request('beads.list', { closedDays: state.ui.closedDays, ...(held ? { since: held } : {}), ...(fetch ? { fetch } : {}) })
+    // The workspace changed while bd was read: this answer is the old one's, and the refresh that follows reads the new one.
+    if (asked !== switches) return
     const switched = useWorkspace(answer.workspace ?? null)
     state.loadedAt = Date.now()
     // Same list: keep the same object, so nothing derived from it is computed again.
@@ -116,12 +121,28 @@ export async function loadDetail(id: string) {
   render()
 }
 
+/** Counts workspace switches: a list asked for before the last one belongs to the workspace left. */
+let switches = 0
+
+/** Shows at once what was kept for the workspace now focused, then reads it from bd. */
+export async function switchWorkspace() {
+  const seq = ++switches
+  const answer = await request('beads.workspace').catch(() => null)
+  if (answer && seq === switches && useWorkspace(answer.workspace)) render({ top: true })
+  refresh()
+}
+
 /** A refresh asked for while one runs waits for it, then runs once: agents can change state many times a second. */
 let refreshing = false
 
 let refreshAgain = false
 
-export function refresh() {
+/** A look at the remote asked for (`r`), kept until a refresh carries it to the worker. */
+let fetchNext = false
+
+/** `fetch`: also look at the remote now. Strictly `true`: refresh is an event handler too, called with the event. */
+export function refresh(fetch?: unknown) {
+  if (fetch === true) fetchNext = true
   if (refreshing) {
     refreshAgain = true
     return

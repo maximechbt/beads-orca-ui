@@ -81,6 +81,8 @@ header { flex: none; padding: 10px 12px 0; border-bottom: 1px solid var(--line);
 .ib { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius); color: var(--subtle); flex: none; }
 .ib:hover { background: var(--hover); color: var(--fg); }
 .ib:active { background: var(--press); }
+.ib.sync { width: auto; min-width: 28px; padding: 0 6px; display: flex; gap: 4px; font-size: 11px; }
+.ib.sync .spin { display: grid; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .search { position: relative; margin: 0 0 8px; }
@@ -482,5 +484,5 @@ button.pv:hover .down, button.pv:focus-visible .down, button.pv[aria-expanded='t
   @keyframes pop { from { transform: translateY(-3px); opacity: 0; } }
 }
 @media (prefers-reduced-motion: reduce) {
-  footer .spinner { animation-duration: 2.4s; }
+  footer .spinner, .ib.sync .spin { animation-duration: 2.4s; }
 }

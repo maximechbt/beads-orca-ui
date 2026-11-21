@@ -29,19 +29,22 @@ async function focused(orca: OrcaWorkerApi): Promise<{ ws: Workspace | null; all
   return { ws: sameBranch.find((w) => w.name === ctx.displayName) ?? sameBranch[0] ?? null, all: workspaces }
 }
 
-/** bd runs one at a time: two bd processes on one database slow each other down (measured: 1.0 s in parallel, 0.7 s in turn). */
-let bdTurn: Promise<unknown> = Promise.resolve()
+/**
+ * bd runs one at a time per folder: two bd processes on one database slow each other down (measured: 1.0 s in parallel,
+ * 0.7 s in turn). Another workspace has its own turn, so a switch never waits behind the last one's calls or its fetch.
+ */
+const bdTurn = new Map<string, Promise<unknown>>()
 
 async function exec(cwd: string, file: string, args: string[]): Promise<string> {
   const go = async () => (await run(file, args, { cwd, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 })).stdout
   if (file !== 'bd') return go()
-  const turn = bdTurn.then(go, go)
-  bdTurn = turn.catch(() => {})
+  const turn = (bdTurn.get(cwd) ?? Promise.resolve()).then(go, go)
+  bdTurn.set(cwd, turn.catch(() => {}))
   return turn
 }
 
 /** `bd ready` and the epics' progress per workspace, kept while the list they were read with is unchanged; each costs a whole bd process. */
-const readyFor = new Map<string, { list: string; ready: string[]; epics: Record<string, EpicProgress>; closed: number; at: number }>()
+const readyFor = new Map<string, { list: string; ready: string[]; epics: Record<string, EpicProgress>; closed: number; commit?: string; ahead?: number; at: number }>()
 /** The closed window per workspace, read again only when the open list changes (a close or a reopen changes it) or after READY_TTL. */
 /** Each workspace's repository: git's common directory, the same for every worktree. Outside git, the folder itself. */
 const projectFor = new Map<string, string>()
@@ -77,6 +80,82 @@ async function customOf(cwd: string): Promise<Custom> {
 }
 
 const bd = async <T>(cwd: string, args: string[]): Promise<T> => JSON.parse(await exec(cwd, 'bd', [...args, '--json'])) as T
+
+/** The workspace's `.beads` folder, whether its Dolt database has a remote, and that database's own folder in embedded mode; read again after a minute. */
+const remoteFor = new Map<string, { at: number; dir: string; has: boolean; db: string }>()
+async function remoteOf(cwd: string): Promise<{ dir: string; has: boolean; db: string }> {
+  const known = remoteFor.get(cwd)
+  if (known && Date.now() - known.at < 60_000) return known
+  const [where, remotes] = await Promise.all([
+    bd<{ path?: string; database_path?: string }>(cwd, ['where']).catch(() => ({ path: '', database_path: '' })),
+    bd<unknown[]>(cwd, ['dolt', 'remote', 'list']).catch(() => [])
+  ])
+  const dir = where.path ?? ''
+  const meta = dir ? ((await readFile(join(dir, 'metadata.json'), 'utf8').then(JSON.parse).catch(() => ({}))) as { dolt_mode?: string; dolt_database?: unknown }) : {}
+  // A plain name only: the repository wrote metadata.json, and this becomes a path.
+  const name = typeof meta.dolt_database === 'string' && /^[\w-]{1,64}$/.test(meta.dolt_database) ? meta.dolt_database : ''
+  const db = meta.dolt_mode === 'embedded' && name && where.database_path ? join(where.database_path, name) : ''
+  const found = { at: Date.now(), dir, has: Boolean(dir) && Array.isArray(remotes) && remotes.length > 0, db }
+  remoteFor.set(cwd, found)
+  return found
+}
+
+/** A Dolt commit hash: 32 base32 characters, never something `dolt` could read as a flag. */
+const isCommit = (c: unknown): c is string => typeof c === 'string' && /^[0-9a-v]{32}$/.test(c)
+
+/**
+ * How many commits `commit` is past `pushed` (all of its history when nothing was pushed), counted by the `dolt` CLI
+ * in the database's folder, without the network. Undefined without `dolt`, or when it cannot say (the pushed commit squashed away).
+ */
+async function aheadOf(db: string, commit: string, pushed: string | undefined): Promise<number | undefined> {
+  if (!db || !isCommit(commit) || (pushed !== undefined && !isCommit(pushed))) return undefined
+  const out = await exec(db, 'dolt', ['log', '--oneline', pushed ? `${pushed}..${commit}` : commit]).catch(() => null)
+  return out === null ? undefined : out.split('\n').filter((l) => l.trim()).length
+}
+
+/**
+ * Whether `commit` is past what was last pushed. bd records that in `.beads/push-state.json` (per machine, git-ignored)
+ * after its own auto-push; a sync from the panel records it there too. No record: nothing is known pushed.
+ */
+export function isUnpushed(commit: string | undefined, pushState: string): boolean {
+  return Boolean(commit) && lastPushed(pushState) !== commit
+}
+
+/** The last commit push-state.json records, if it records one. */
+function lastPushed(pushState: string): string | undefined {
+  try {
+    const c = (JSON.parse(pushState) as { last_commit?: unknown }).last_commit
+    return typeof c === 'string' && c ? c : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const PUSH_STATE = 'push-state.json'
+
+/** What the last look at the remote found: how many of its commits this database lacks, when it could tell. */
+const fetchedFor = new Map<string, { at: number; behind?: number; running?: Promise<void> }>()
+// shortcut: a look fetches over the network and holds the database meanwhile (~6 s), so it runs on its own every 10 minutes at most; `r` looks now.
+const FETCH_TTL = 10 * 60_000
+
+/** Fetches from the remote (`bd federation status`) and keeps how far behind it this database is; one look at a time. */
+function fetchRemote(cwd: string): Promise<void> {
+  const known = fetchedFor.get(cwd)
+  if (known?.running) return known.running
+  type Peer = { Reachable?: boolean; Status?: { Peer?: string; LocalBehind?: number } }
+  const running = bd<{ peers?: Peer[] }>(cwd, ['federation', 'status'])
+    .then((r) => {
+      const peer = r.peers?.find((p) => p.Status?.Peer === 'origin') ?? r.peers?.[0]
+      const behind = peer?.Reachable ? peer.Status?.LocalBehind : undefined
+      // -1: the remote holds nothing of this branch yet, or bd could not compare.
+      fetchedFor.set(cwd, { at: Date.now(), behind: typeof behind === 'number' && behind >= 0 ? behind : undefined })
+    })
+    .catch(() => {
+      fetchedFor.set(cwd, { at: Date.now(), behind: known?.behind })
+    })
+  fetchedFor.set(cwd, { at: known?.at ?? 0, behind: known?.behind, running })
+  return running
+}
 
 /** Orca puts its CLI path in the environment of what it starts; the PATH may not have it. */
 const ORCA_CLI = process.env.ORCA_CLI_COMMAND || 'orca'
@@ -271,6 +350,7 @@ export default function activate(orca: OrcaWorkerApi): void {
     const since = closedSince(closedDays)
     try {
       const open = await exec(ws.path, 'bd', ['list', EXCLUDE, '--flat', '--brief', '-n', '0', '--json'])
+      const remote = await remoteOf(ws.path)
       const key = `${closedDays}\n${open}`
       let window = closedFor.get(ws.path)
       if (!(window && window.key === key && Date.now() - window.at < READY_TTL)) {
@@ -293,21 +373,36 @@ export default function activate(orca: OrcaWorkerApi): void {
         // bd count takes no --exclude-type: count by type and leave bd's own bookkeeping out.
         const byType = await bd<{ groups?: { group: string; count: number }[] }>(ws.path, ['count', '--status=closed', '--by-type']).catch(() => ({ groups: [] }))
         const closed = (byType.groups ?? []).filter((g) => !SYSTEM_TYPES.includes(g.group)).reduce((n, g) => n + g.count, 0)
-        known = { list: raw, ready, epics, closed, at: Date.now() }
+        // bd commits every write: the local head moves with the list. No remote, nothing to push, no bd call.
+        const commit = remote.has ? (await bd<{ commit?: string }>(ws.path, ['vc', 'status']).catch(() => ({ commit: undefined }))).commit : undefined
+        const pushed = commit ? lastPushed(await readFile(join(remote.dir, PUSH_STATE), 'utf8').catch(() => '')) : undefined
+        const ahead = commit ? await aheadOf(remote.db, commit, pushed) : undefined
+        known = { list: raw, ready, epics, closed, commit, ahead, at: Date.now() }
         readyFor.set(ws.path, known)
       }
       const { ready, epics, closed } = known
+      const unpushed = remote.has && isUnpushed(known.commit, await readFile(join(remote.dir, PUSH_STATE), 'utf8').catch(() => ''))
+      const ahead = unpushed ? known.ahead : undefined
+      if (remote.has) {
+        // Last, so the list's own bd calls do not wait behind the network.
+        const fetched = fetchedFor.get(ws.path)
+        if (input?.fetch) await fetchRemote(ws.path)
+        else if (!fetched || (!fetched.running && Date.now() - fetched.at > FETCH_TTL)) void fetchRemote(ws.path)
+      }
+      const behind = remote.has ? fetchedFor.get(ws.path)?.behind : undefined
       // The panel already has this exact answer: say so instead of sending the whole list again.
-      const version = createHash('sha1').update(`${ws.path}\n${closedDays}\n${raw}\n${ready.join(',')}`).digest('hex').slice(0, 16)
+      const version = createHash('sha1').update(`${ws.path}\n${closedDays}\n${raw}\n${ready.join(',')}\n${remote.has}\n${unpushed}\n${ahead}\n${behind}`).digest('hex').slice(0, 16)
       const [me, project] = await Promise.all([actor(ws.path), projectOf(ws.path)])
       if (input?.since === version) return { workspace: ws.path, beads: [], ready: [], version, unchanged: true, me, project }
       const { statuses, types } = await customOf(ws.path)
       const rows = [...(JSON.parse(open) as ListRow[]), ...(JSON.parse(done) as ListRow[])]
-      return plain({ workspace: ws.path, beads: toBeads(rows), ready, version, me, project, statuses, types, closedDays, closedTotal: closed, epics })
+      return plain({ workspace: ws.path, beads: toBeads(rows), ready, version, me, project, statuses, types, closedDays, closedTotal: closed, epics, remote: remote.has, unpushed, ahead, behind })
     } catch (err) {
       return { workspace: ws.path, beads: [], ready: [], ...problemOf(err) }
     }
   })
+
+  orca.panels.handle('beads.workspace', async () => ({ workspace: (await focused(orca)).ws?.path ?? null }))
 
   orca.panels.handle('beads.show', async ({ id }) => {
     const { ws } = await focused(orca)
@@ -337,6 +432,32 @@ export default function activate(orca: OrcaWorkerApi): void {
         const me = await actor(ws.path)
         return exec(ws.path, 'bd', ['update', '--status=in_progress', ...(me ? [`--assignee=${me}`] : []), '--', action.id])
       })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, ...problemOf(err) }
+    }
+  })
+
+  orca.panels.handle('beads.sync', async () => {
+    const { ws } = await focused(orca)
+    if (!ws) return noWorkspace
+    try {
+      const remote = await remoteOf(ws.path)
+      if (!remote.has) return invalid('This database has no Dolt remote (bd dolt remote add).')
+      // Pull, conflict check, push; holds the database throughout, other bd commands wait their turn.
+      // --no-adopt: never a remote made up from git origin. A conflict halts it with nothing pushed, exit 2.
+      await exec(ws.path, 'bd', ['sync', '--no-adopt', '--json']).catch((err) => {
+        // bd tells why (status, conflicting rows) on stdout; keep it for the details.
+        const out = (err as { stdout?: string }).stdout?.trim()
+        if (out) (err as { stderr?: string }).stderr = [(err as { stderr?: string }).stderr?.trim(), out].filter(Boolean).join('\n\n')
+        throw err
+      })
+      const { commit } = await bd<{ commit: string }>(ws.path, ['vc', 'status'])
+      // Never through a link: a repository could ship `.beads/push-state.json` pointing anywhere.
+      const file = await open(join(remote.dir, PUSH_STATE), constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW)
+      await file.writeFile(JSON.stringify({ last_push: new Date().toISOString(), last_commit: commit }, null, 2)).finally(() => file.close())
+      fetchedFor.set(ws.path, { at: Date.now(), behind: 0 })
+      readyFor.delete(ws.path)
       return { ok: true }
     } catch (err) {
       return { ok: false, ...problemOf(err) }

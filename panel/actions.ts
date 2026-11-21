@@ -2,7 +2,7 @@
 import { parseMinutes } from '../src/model.ts'
 import { request } from './bridge.ts'
 import { isTemp } from '../src/optimistic.ts'
-import { act, create, details, loadDetail, loadMemories, loadTargets } from './data.ts'
+import { act, create, details, loadDetail, loadMemories, loadTargets, refresh } from './data.ts'
 import { closeMenu } from './menu.ts'
 import { render } from './render.ts'
 import { save, state, t } from './state.ts'
@@ -21,6 +21,18 @@ export async function openBoard() {
     state.outcome = { problem: r.problem ?? 'failed', error: r.error }
     render()
   }
+}
+
+/** The header's sync button: pulls the remote's commits, pushes the database's, then reads the list back. */
+export async function sync() {
+  if (state.syncing) return
+  state.syncing = true
+  render()
+  const r = await request('beads.sync').catch((err: Error) => ({ ok: false, problem: 'failed' as const, error: err.message }))
+  state.syncing = false
+  state.outcome = r.ok ? { notice: t().synced } : { problem: r.problem ?? 'failed', error: r.error }
+  render()
+  refresh()
 }
 
 export function openMemory() {

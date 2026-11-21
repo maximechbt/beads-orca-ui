@@ -73,6 +73,13 @@ const list = {
   truncated: false
 }
 
+test('names the focused workspace without running bd, null when none is', async () => {
+  const none = await mountWorker(main, { host: mockHost({ results: { 'workspace.readContext': null } }) })
+  assert.deepEqual(await none.request('beads.workspace'), { workspace: null })
+  const worker = await mountWorker(main, { host: mockHost({ results: { 'workspace.readContext': context, 'workspace.list': list } }) })
+  assert.deepEqual(await worker.request('beads.workspace'), { workspace: '/w' })
+})
+
 test('offers the focused worktree first, never one Orca cannot tie to its repository', async () => {
   // '/w' is not a real Orca worktree here, so its repository is unknown: only the focused one is offered.
   const host = mockHost({ results: { 'workspace.readContext': context, 'workspace.list': list } })
@@ -131,6 +138,14 @@ test('says what each bead still waits on, forgetting finished blockers', () => {
   assert.deepEqual(beads.find((b) => b.id === 't')?.waits_on, ['doing'])
   assert.equal(beads.find((b) => b.id === 'e')?.waits_on, undefined)
   assert.equal('dependencies' in beads[3], false)
+})
+
+test('a commit is unpushed until push-state.json records it', () => {
+  assert.equal(main.isUnpushed(undefined, ''), false)
+  assert.equal(main.isUnpushed('abc', ''), true)
+  assert.equal(main.isUnpushed('abc', 'not json'), true)
+  assert.equal(main.isUnpushed('abc', '{"last_push":"2026-11-21T10:00:00Z","last_commit":"old"}'), true)
+  assert.equal(main.isUnpushed('abc', '{"last_push":"2026-11-21T10:00:00Z","last_commit":"abc"}'), false)
 })
 
 test('stores and forgets memories with arguments that cannot read as flags', () => {

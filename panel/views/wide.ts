@@ -7,7 +7,7 @@ import { beads, epicFor, readySet, search, shownList, epicProgress } from '../da
 import { anchorOf, glyph, html } from '../dom.ts'
 import { isOpen, openMenu } from '../menu.ts'
 import type { MenuItem } from '../menu.ts'
-import { render } from '../render.ts'
+import { SyncButton, render } from '../render.ts'
 import { save, state, t } from '../state.ts'
 import type { Route } from '../state.ts'
 import { empty, listSkeleton, problemState, epicColor, groupGlyph, groupIcon, groupName, epicBar, wsName } from '../ui.ts'
@@ -146,6 +146,7 @@ export function WideHeader({ route, onSearch, onSearchKey }: { route: Route; onS
           <kbd aria-hidden="true">/</kbd>
         </div>
         <button class="ib" type="button" hidden=${!ok} aria-label=${m.memory} aria-pressed=${String(onMemory)} title=${`${m.memoryHint} (m)`} onClick=${toggleMemory} dangerouslySetInnerHTML=${{ __html: ICON.brain }} />
+        <${SyncButton} />
         <button class="btn primary sm" type="button" hidden=${route === 'form' || !ok} title=${onMemory ? m.newMemory : `${m.newBead} (n)`} onClick=${newHere}>
           ${glyph(ICON.add)}${onMemory ? m.newMemory : m.newBead}
         </button>

@@ -2,7 +2,7 @@
 // Everything bd returns is untrusted text: Preact puts it in the page as text, never as markup.
 // This file wires the keyboard, the pointer and Orca's events, then starts the panel.
 import { back, newMemory, open, openCreate, openMemory } from './actions.ts'
-import { loadTargets, prefetch, refresh } from './data.ts'
+import { loadTargets, prefetch, refresh, switchWorkspace } from './data.ts'
 import { searchBox } from './dom.ts'
 import { closeMenu } from './menu.ts'
 import { render } from './render.ts'
@@ -56,7 +56,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault()
     searchBox().focus()
     searchBox().select()
-  } else if (e.key === 'r') refresh()
+  } else if (e.key === 'r') refresh(true)
   else if (e.key === 'n' && route === 'memory') newMemory()
   else if (e.key === 'm' && route !== 'form' && listed) route === 'memory' ? back() : openMemory()
   else if (e.key === 'n' && route !== 'form' && listed) openCreate(null)
@@ -83,7 +83,7 @@ document.addEventListener('focusin', (e) => {
 })
 
 orca.on?.('workspace.changed', () => {
-  refresh()
+  void switchWorkspace()
   if (state.ui.form?.kind === 'launch') void loadTargets()
 })
 
