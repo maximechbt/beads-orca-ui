@@ -148,3 +148,12 @@ test('own reads only what an object holds itself', () => {
   assert.equal(model.own({ open: 'Open' }, 'open'), 'Open')
   for (const k of ['constructor', 'toString', '__proto__']) assert.equal(model.own({ open: 'Open' }, k), undefined)
 })
+
+test('orders the board as saved, a column the order does not know beside its default neighbour', () => {
+  const keys = ['todo', 'doing', 'awaiting_review', 'blocked', 'done']
+  assert.deepEqual(model.orderColumns(keys, []), keys)
+  assert.deepEqual(model.orderColumns(keys, ['done', 'doing', 'todo', 'blocked']), ['done', 'doing', 'awaiting_review', 'todo', 'blocked'])
+  assert.deepEqual(model.orderColumns(['todo', 'done'], ['gone', 'done', 'todo']), ['done', 'todo'])
+  assert.deepEqual(model.moveColumn(['a', 'b', 'c', 'd'], 'a', 'c'), ['b', 'c', 'a', 'd'])
+  assert.deepEqual(model.moveColumn(['a', 'b', 'c', 'd'], 'd', 'b'), ['a', 'd', 'b', 'c'])
+})

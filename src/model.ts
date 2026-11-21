@@ -93,6 +93,27 @@ export function sections(beads: Bead[], ready: Set<string>, workOrder = false): 
   return [...by]
 }
 
+/**
+ * The board's columns in the order a person chose: the saved ones first as saved, then any column the order
+ * does not know (a status added since) right after the column it follows by default.
+ */
+export function orderColumns(keys: SectionKey[], saved: string[]): SectionKey[] {
+  const out = saved.filter((k) => keys.includes(k))
+  keys.forEach((k, i) => {
+    if (out.includes(k)) return
+    const before = keys.slice(0, i).reverse().find((p) => out.includes(p))
+    out.splice(before === undefined ? 0 : out.indexOf(before) + 1, 0, k)
+  })
+  return out
+}
+
+/** Moves column `from` to where `to` is: past it when it came from the left, before it from the right. */
+export function moveColumn(order: SectionKey[], from: SectionKey, to: SectionKey): SectionKey[] {
+  const out = order.filter((k) => k !== from)
+  out.splice(order.indexOf(to), 0, from)
+  return out
+}
+
 /** The group `sections` puts one bead in: its own for a custom status. */
 export const sectionOf = (b: Bead, ready: Set<string>): SectionKey =>
   isCustom(b.status) ? b.status : isDoing(b) ? 'doing' : isDone(b) ? 'done' : isWaiting(b, ready) ? 'blocked' : 'todo'

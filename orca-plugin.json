@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "beads-orca-ui",
   "name": "Beads UI",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Your beads tasks beside your agents, and full screen in the middle of Orca: see what moves, change any task in place, and hand one to an agent in one press.",
   "author": {
     "name": "maximechbt",

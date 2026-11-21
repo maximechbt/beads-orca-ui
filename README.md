@@ -20,7 +20,7 @@ beads keeps your project's tasks next to your code, and coding agents read and u
 
 The **expand** button opens Beads in the middle of Orca, with three views:
 
-- **Board**: one column per state, a column per custom status included. Drag a card to another column to start, hold, reopen or finish it.
+- **Board**: one column per state, a column per custom status included. Drag a card to another column to start, hold, reopen or finish it. Drag a column by its header, or use its **…** menu, to put the columns in your order: it is kept per project (every worktree of the repository) on your machine.
 - **List**: one line per task, grouped by state, with the epic, the due date and who holds it.
 - **Epics**: each epic with its progress and its tasks.
 
@@ -79,7 +79,7 @@ Install **Beads UI** from Orca's plugin catalog ([open it in Orca](https://onorc
 Or install it from Git: in Orca, open **Settings → Plugins**, choose **Add plugin → From a Git URL…**, and paste:
 
 ```
-https://github.com/maximechbt/beads-orca-ui#v2.0.1
+https://github.com/maximechbt/beads-orca-ui#v2.1.0
 ```
 
 You need:

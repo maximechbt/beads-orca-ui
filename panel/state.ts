@@ -9,7 +9,7 @@ export const t = () => messages(orca.locale || 'en')
 
 type Problem = { problem?: BeadsProblem; error?: string }
 
-export type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string; statuses?: CustomStatus[]; types?: string[]; closedDays?: number; closedTotal?: number; epics?: Record<string, { done: number; total: number }> } & Problem
+export type ListAnswer = { workspace: string | null; beads: Bead[]; ready: string[]; version?: string; unchanged?: boolean; me?: string; statuses?: CustomStatus[]; types?: string[]; project?: string; closedDays?: number; closedTotal?: number; epics?: Record<string, { done: number; total: number }> } & Problem
 
 export type ShowAnswer = { bead: BeadDetail | null } & Problem
 

@@ -193,6 +193,12 @@ button.epic-title:hover .t { text-decoration: underline; text-underline-offset: 
 .col.over { border-color: var(--accent); background: var(--selected); }
 .col-h { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 12px 8px; font-size: 13px; font-weight: 600; background: inherit; border-radius: 8px 8px 0 0; }
 .col-h .num { color: var(--subtle); font-weight: 400; }
+.col-h[draggable='true'] { cursor: grab; }
+.col-h .col-menu { margin-left: auto; width: 24px; height: 24px; opacity: 0; transition: opacity 0.12s; cursor: pointer; }
+.col:hover .col-menu, .col-menu:focus-visible, .col-menu[aria-expanded='true'] { opacity: 1; }
+/* Where a dragged column lands: a bar on the side it goes to. */
+.col.ins-l { box-shadow: inset 3px 0 0 var(--accent); }
+.col.ins-r { box-shadow: inset -3px 0 0 var(--accent); }
 .cards { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px; }
 .card { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 9px 10px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); cursor: grab; }
 .card:hover { border-color: color-mix(in srgb, var(--fg) 22%, var(--line)); }

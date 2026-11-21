@@ -43,6 +43,15 @@ async function exec(cwd: string, file: string, args: string[]): Promise<string> 
 /** `bd ready` and the epics' progress per workspace, kept while the list they were read with is unchanged; each costs a whole bd process. */
 const readyFor = new Map<string, { list: string; ready: string[]; epics: Record<string, EpicProgress>; closed: number; at: number }>()
 /** The closed window per workspace, read again only when the open list changes (a close or a reopen changes it) or after READY_TTL. */
+/** Each workspace's repository: git's common directory, the same for every worktree. Outside git, the folder itself. */
+const projectFor = new Map<string, string>()
+async function projectOf(cwd: string): Promise<string> {
+  const known = projectFor.get(cwd)
+  if (known) return known
+  const dir = (await exec(cwd, 'git', ['rev-parse', '--path-format=absolute', '--git-common-dir']).catch(() => '')).trim() || cwd
+  projectFor.set(cwd, dir)
+  return dir
+}
 const closedFor = new Map<string, { key: string; raw: string; at: number }>()
 type EpicProgress = { done: number; total: number }
 
@@ -290,11 +299,11 @@ export default function activate(orca: OrcaWorkerApi): void {
       const { ready, epics, closed } = known
       // The panel already has this exact answer: say so instead of sending the whole list again.
       const version = createHash('sha1').update(`${ws.path}\n${closedDays}\n${raw}\n${ready.join(',')}`).digest('hex').slice(0, 16)
-      const me = await actor(ws.path)
-      if (input?.since === version) return { workspace: ws.path, beads: [], ready: [], version, unchanged: true, me }
+      const [me, project] = await Promise.all([actor(ws.path), projectOf(ws.path)])
+      if (input?.since === version) return { workspace: ws.path, beads: [], ready: [], version, unchanged: true, me, project }
       const { statuses, types } = await customOf(ws.path)
       const rows = [...(JSON.parse(open) as ListRow[]), ...(JSON.parse(done) as ListRow[])]
-      return plain({ workspace: ws.path, beads: toBeads(rows), ready, version, me, statuses, types, closedDays, closedTotal: closed, epics })
+      return plain({ workspace: ws.path, beads: toBeads(rows), ready, version, me, project, statuses, types, closedDays, closedTotal: closed, epics })
     } catch (err) {
       return { workspace: ws.path, beads: [], ready: [], ...problemOf(err) }
     }

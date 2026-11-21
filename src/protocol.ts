@@ -132,6 +132,8 @@ declare module 'orca' {
         me?: string
         statuses?: CustomStatus[]
         types?: string[]
+        /** The git repository the workspace belongs to, shared by its worktrees: what per-project preferences key on. */
+        project?: string
         closedDays?: number
         closedTotal?: number
         epics?: Record<string, { done: number; total: number }>
